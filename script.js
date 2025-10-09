@@ -764,12 +764,19 @@ class NotesApp {
 
             if (!response.ok) {
                 const errorData = await response.json();
-                throw new Error(errorData.error || 'Failed to create payment');
+                this.showDebugMessage(`❌ Debug: Server error response: ${JSON.stringify(errorData, null, 2)}`);
+                throw new Error(errorData.error || `Server error: ${response.status}`);
             }
 
             const paymentData = await response.json();
             
             this.showDebugMessage(`✅ Debug: Payment link created: ${paymentData.payment_url}`);
+            
+            // Check if payment_url exists in response
+            if (!paymentData.payment_url) {
+                this.showDebugMessage(`❌ Debug: No payment_url in response: ${JSON.stringify(paymentData, null, 2)}`);
+                throw new Error('Payment URL not received from server');
+            }
             
             // Redirect to Dodo Payments checkout
             window.open(paymentData.payment_url, '_blank');
@@ -779,6 +786,7 @@ class NotesApp {
         } catch (error) {
             console.error('Payment creation error:', error);
             this.showDebugMessage(`❌ Debug: Payment creation failed: ${error.message}`);
+            this.showDebugMessage(`❌ Debug: Error stack: ${error.stack}`);
             this.showMessage(`Payment error: ${error.message}`, 'error');
         }
     }

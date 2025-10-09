@@ -1,5 +1,6 @@
 const express = require('express');
 const path = require('path');
+const DodoPayments = require('dodopayments');
 
 const app = express();
 const port = process.env.PORT || 3000;
@@ -33,70 +34,110 @@ app.get('/api/firebase-config', (_req, res) => {
   });
 });
 
-// Dodo Payments API endpoints
+// Initialize DodoPayments client
+const dodoClient = new DodoPayments({
+  bearerToken: process.env.DODO_PAYMENTS_API_KEY,
+});
+
+// Dodo Payments Subscription API endpoints
 app.post('/api/payments/create', async (req, res) => {
   try {
-    const { userEmail, userId } = req.body;
+    console.log('Subscription creation request received:', req.body);
+    
+    const { userEmail, userId, billingAddress } = req.body;
     
     if (!userEmail || !userId) {
+      console.log('Missing required fields:', { userEmail: !!userEmail, userId: !!userId });
       return res.status(400).json({ error: 'User email and ID are required' });
     }
 
-    const paymentData = {
-      product_id: 'pdt_HL2gMRuyqiWflH2VZaLEU',
-      customer_email: userEmail,
-      customer_name: userEmail.split('@')[0], // Use email prefix as name
-      amount: 999, // $9.99 in cents
-      currency: 'USD',
-      description: 'Premium Notes App Upgrade',
-      success_url: `${req.protocol}://${req.get('host')}/payment-success`,
-      cancel_url: `${req.protocol}://${req.get('host')}/payment-cancel`,
-      metadata: {
-        user_id: userId,
-        product: 'premium_upgrade'
-      }
-    };
-
-    const response = await fetch('https://api.dodopayments.com/v1/payments', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${process.env.DODO_PAYMENTS_API_KEY}`,
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify(paymentData)
-    });
-
-    if (!response.ok) {
-      const errorData = await response.text();
-      console.error('Dodo Payments API error:', errorData);
-      return res.status(500).json({ error: 'Failed to create payment' });
+    // Check if API key is available
+    if (!process.env.DODO_PAYMENTS_API_KEY) {
+      console.error('DODO_PAYMENTS_API_KEY environment variable not set');
+      return res.status(500).json({ error: 'Payment service not configured' });
     }
 
-    const paymentResponse = await response.json();
-    res.json(paymentResponse);
+    // Default billing address if not provided
+    const defaultBilling = {
+      city: 'New York',
+      country: 'US',
+      state: 'NY',
+      street: '123 Main St',
+      zipcode: '10001'
+    };
+
+    const subscriptionData = {
+      billing: billingAddress || defaultBilling,
+      customer: { 
+        customer_id: userId,
+        email: userEmail,
+        name: userEmail.split('@')[0]
+      },
+      product_id: 'pdt_HL2gMRuyqiWflH2VZaLEU',
+      quantity: 1,
+      success_url: `${req.protocol}://${req.get('host')}/payment-success`,
+      cancel_url: `${req.protocol}://${req.get('host')}/payment-cancel`
+    };
+
+    console.log('Creating subscription with data:', {
+      ...subscriptionData,
+      // Don't log the full API key for security
+      api_key: process.env.DODO_PAYMENTS_API_KEY ? 'SET' : 'NOT_SET'
+    });
+
+    const subscription = await dodoClient.subscriptions.create(subscriptionData);
+
+    console.log('Subscription created successfully:', subscription);
+    
+    // Return the payment_id for redirect
+    res.json({
+      payment_id: subscription.payment_id,
+      subscription_id: subscription.id,
+      payment_url: subscription.payment_url || `https://checkout.dodopayments.com/pay/${subscription.payment_id}`
+    });
 
   } catch (error) {
-    console.error('Payment creation error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    console.error('Subscription creation error:', {
+      message: error.message,
+      stack: error.stack,
+      name: error.name,
+      response: error.response?.data
+    });
+    res.status(500).json({ 
+      error: 'Failed to create subscription',
+      details: error.message,
+      response: error.response?.data
+    });
   }
 });
 
-// Webhook handler for payment status updates
+// Webhook handler for subscription status updates
 app.post('/api/payments/webhook', async (req, res) => {
   try {
     const { event, data } = req.body;
     
-    console.log('Payment webhook received:', { event, data });
+    console.log('Subscription webhook received:', { event, data });
 
-    if (event === 'payment.completed') {
-      const { customer_email, metadata } = data;
+    if (event === 'subscription.created' || event === 'subscription.activated') {
+      const { customer, subscription_id } = data;
       
       // Here you would typically update your database to mark the user as premium
-      // For now, we'll just log the successful payment
-      console.log(`Premium upgrade completed for user: ${customer_email}`);
+      // For now, we'll just log the successful subscription
+      console.log(`Premium subscription activated for user: ${customer.email}`);
+      console.log(`Subscription ID: ${subscription_id}`);
       
       // You can add database logic here to update user premium status
-      // await updateUserPremiumStatus(metadata.user_id, true);
+      // await updateUserPremiumStatus(customer.customer_id, true, subscription_id);
+    }
+
+    if (event === 'subscription.cancelled' || event === 'subscription.expired') {
+      const { customer, subscription_id } = data;
+      
+      console.log(`Premium subscription cancelled/expired for user: ${customer.email}`);
+      console.log(`Subscription ID: ${subscription_id}`);
+      
+      // You can add database logic here to revoke user premium status
+      // await updateUserPremiumStatus(customer.customer_id, false, subscription_id);
     }
 
     res.status(200).json({ received: true });
@@ -125,8 +166,8 @@ app.get('/payment-success', (_req, res) => {
     <body>
       <div class="success-card">
         <div class="success-icon">✅</div>
-        <h1>Payment Successful!</h1>
-        <p>Welcome to Premium! You now have access to all premium features.</p>
+        <h1>Subscription Activated!</h1>
+        <p>Welcome to Premium! Your subscription is now active and you have access to all premium features.</p>
         <a href="/" class="btn">Return to Notes</a>
       </div>
     </body>
