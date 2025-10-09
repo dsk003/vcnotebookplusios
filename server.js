@@ -36,6 +36,145 @@ app.get('/api/firebase-config', (_req, res) => {
   });
 });
 
+// Dodo Payments API endpoints
+app.post('/api/create-payment', async (req, res) => {
+  try {
+    console.log('Payment creation request received:', req.body);
+    
+    const { userEmail, userId } = req.body;
+    
+    if (!userEmail || !userId) {
+      return res.status(400).json({ error: 'User email and ID are required' });
+    }
+
+    // Check if API key is available
+    if (!process.env.DODO_PAYMENTS_API_KEY) {
+      console.error('DODO_PAYMENTS_API_KEY environment variable not set');
+      return res.status(500).json({ error: 'Payment system not configured' });
+    }
+
+    // Check if product ID is available
+    if (!process.env.PRODUCT_ID) {
+      console.error('PRODUCT_ID environment variable not set');
+      return res.status(500).json({ error: 'Product not configured' });
+    }
+
+    const paymentData = {
+      product_id: process.env.PRODUCT_ID,
+      customer_email: userEmail,
+      customer_name: userEmail.split('@')[0],
+      amount: 999, // $9.99 in cents
+      currency: 'USD',
+      description: 'Premium Notes App Upgrade',
+      success_url: `${req.protocol}://${req.get('host')}/success`,
+      cancel_url: `${req.protocol}://${req.get('host')}/`,
+      metadata: {
+        user_id: userId,
+        product: 'premium_upgrade'
+      }
+    };
+
+    console.log('Creating payment with data:', {
+      ...paymentData,
+      api_key: process.env.DODO_PAYMENTS_API_KEY ? 'SET' : 'NOT_SET'
+    });
+
+    const response = await fetch('https://api.dodopayments.com/v1/payments', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${process.env.DODO_PAYMENTS_API_KEY}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(paymentData)
+    });
+
+    console.log('Dodo Payments API response status:', response.status);
+
+    if (!response.ok) {
+      const errorData = await response.text();
+      console.error('Dodo Payments API error:', {
+        status: response.status,
+        statusText: response.statusText,
+        error: errorData
+      });
+      return res.status(500).json({ 
+        error: 'Failed to create payment',
+        details: errorData
+      });
+    }
+
+    const paymentResponse = await response.json();
+    console.log('Payment created successfully:', paymentResponse);
+    
+    res.json({
+      payment_id: paymentResponse.payment_id,
+      payment_url: paymentResponse.payment_url
+    });
+
+  } catch (error) {
+    console.error('Payment creation error:', {
+      message: error.message,
+      stack: error.stack
+    });
+    res.status(500).json({ 
+      error: 'Internal server error',
+      details: error.message
+    });
+  }
+});
+
+// Webhook handler for payment status updates
+app.post('/api/webhook', async (req, res) => {
+  try {
+    const { event, data } = req.body;
+    
+    console.log('Payment webhook received:', { event, data });
+
+    if (event === 'payment.completed') {
+      const { customer_email, metadata } = data;
+      
+      // Here you would typically update your database to mark the user as premium
+      console.log(`Premium upgrade completed for user: ${customer_email}`);
+      console.log(`User ID: ${metadata?.user_id}`);
+      
+      // You can add database logic here to update user premium status
+      // await updateUserPremiumStatus(metadata.user_id, true);
+    }
+
+    res.status(200).json({ received: true });
+  } catch (error) {
+    console.error('Webhook processing error:', error);
+    res.status(500).json({ error: 'Webhook processing failed' });
+  }
+});
+
+// Payment success page
+app.get('/success', (_req, res) => {
+  res.send(`
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <title>Payment Successful</title>
+      <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; text-align: center; padding: 50px; background: #f5f5f7; }
+        .success-card { background: white; padding: 40px; border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.1); max-width: 400px; margin: 0 auto; }
+        .success-icon { font-size: 48px; color: #34c759; margin-bottom: 20px; }
+        h1 { color: #1d1d1f; margin-bottom: 10px; }
+        p { color: #86868b; margin-bottom: 30px; }
+        .btn { background: #007aff; color: white; padding: 12px 24px; border: none; border-radius: 8px; text-decoration: none; display: inline-block; }
+      </style>
+    </head>
+    <body>
+      <div class="success-card">
+        <div class="success-icon">✅</div>
+        <h1>Payment Successful!</h1>
+        <p>Welcome to Premium! You now have access to all premium features.</p>
+        <a href="/" class="btn">Return to Notes</a>
+      </div>
+    </body>
+    </html>
+  `);
+});
 
 // Fallback to index.html for root
 app.get('/', (_req, res) => {
