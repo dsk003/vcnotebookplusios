@@ -486,6 +486,9 @@ class NotesApp {
         this.hasUnsavedChanges = false;
         this.updateSaveButtonState();
         
+        // Clear temporary files when loading a saved note
+        this.tempFileAttachments = [];
+        
         // Load file attachments for this note
         await this.loadFileAttachments();
     }
@@ -993,9 +996,11 @@ class NotesApp {
     }
 
     async loadFileAttachments() {
+        // Clear all attachments first
+        this.fileAttachments = [];
+        this.tempFileAttachments = [];
+        
         if (!this.currentNoteId) {
-            this.fileAttachments = [];
-            this.tempFileAttachments = [];
             this.renderFileAttachments();
             return;
         }
@@ -1016,7 +1021,7 @@ class NotesApp {
             }
 
             this.fileAttachments = data || [];
-            this.showDebugMessage(`✅ Debug: Loaded ${this.fileAttachments.length} file attachments`);
+            this.showDebugMessage(`✅ Debug: Loaded ${this.fileAttachments.length} file attachments for note ${this.currentNoteId}`);
             this.renderFileAttachments();
 
         } catch (error) {
@@ -1032,16 +1037,16 @@ class NotesApp {
         const attachmentsList = document.getElementById('attachmentsList');
         const fileAttachments = document.getElementById('fileAttachments');
 
-        // Combine saved and temporary attachments
-        const allAttachments = [...this.fileAttachments, ...this.tempFileAttachments];
+        // Only show attachments for the current note
+        const currentNoteAttachments = this.getCurrentNoteAttachments();
 
-        if (allAttachments.length === 0) {
+        if (currentNoteAttachments.length === 0) {
             fileAttachments.style.display = 'none';
             return;
         }
 
         fileAttachments.style.display = 'block';
-        attachmentsList.innerHTML = allAttachments.map(attachment => 
+        attachmentsList.innerHTML = currentNoteAttachments.map(attachment => 
             this.createAttachmentHTML(attachment)
         ).join('');
 
@@ -1064,9 +1069,19 @@ class NotesApp {
         this.loadMediaPreviews();
     }
 
+    getCurrentNoteAttachments() {
+        // For saved notes, show saved attachments
+        if (this.currentNoteId) {
+            return this.fileAttachments.filter(attachment => attachment.note_id === this.currentNoteId);
+        }
+        
+        // For new/unsaved notes, show temporary attachments
+        return this.tempFileAttachments;
+    }
+
     async loadMediaPreviews() {
-        const allAttachments = [...this.fileAttachments, ...this.tempFileAttachments];
-        const mediaAttachments = allAttachments.filter(attachment => 
+        const currentNoteAttachments = this.getCurrentNoteAttachments();
+        const mediaAttachments = currentNoteAttachments.filter(attachment => 
             this.isImageFile(attachment.file_name) || this.isVideoFile(attachment.file_name)
         );
 
@@ -1230,7 +1245,8 @@ class NotesApp {
     }
 
     async downloadAttachment(attachmentId) {
-        const attachment = [...this.fileAttachments, ...this.tempFileAttachments].find(a => a.id === attachmentId);
+        const currentNoteAttachments = this.getCurrentNoteAttachments();
+        const attachment = currentNoteAttachments.find(a => a.id === attachmentId);
         if (!attachment) return;
 
         try {
@@ -1269,7 +1285,8 @@ class NotesApp {
     }
 
     async deleteAttachment(attachmentId) {
-        const attachment = [...this.fileAttachments, ...this.tempFileAttachments].find(a => a.id === attachmentId);
+        const currentNoteAttachments = this.getCurrentNoteAttachments();
+        const attachment = currentNoteAttachments.find(a => a.id === attachmentId);
         if (!attachment) return;
 
         if (!confirm(`Are you sure you want to delete "${attachment.file_name}"?`)) return;
