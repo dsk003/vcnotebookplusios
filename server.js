@@ -194,7 +194,7 @@ app.post('/api/payments/webhook', async (req, res) => {
     console.log('Webhook headers:', req.headers);
     console.log('Webhook body:', req.body);
     
-    const { event, data } = req.body;
+    const webhookData = req.body;
     
     // Verify webhook signature if webhook secret is provided
     if (process.env.DODO_WEBHOOK_SECRET) {
@@ -211,31 +211,74 @@ app.post('/api/payments/webhook', async (req, res) => {
       console.log('⚠️ No webhook secret configured - skipping signature verification');
     }
     
-    console.log('Payment webhook received:', { event, data });
+    console.log('Payment webhook received:', webhookData);
 
-    if (event === 'payment.completed' || event === 'subscription.created' || event === 'subscription.activated') {
-      const { customer_email, metadata, subscription_id, payment_id } = data;
+    // Handle DodoPayments webhook format
+    // Check if this is a subscription webhook
+    if (webhookData.payload_type === 'Subscription' && webhookData.data) {
+      const { customer, metadata, subscription_id, status } = webhookData.data;
       
-      console.log(`✅ Premium upgrade completed for user: ${customer_email}`);
-      console.log(`User ID: ${metadata?.user_id}`);
-      console.log(`Subscription ID: ${subscription_id}`);
-      console.log(`Payment ID: ${payment_id}`);
-      
-      // Update user subscription status in database
-      await updateUserSubscriptionStatus(metadata?.user_id, customer_email, true, subscription_id, payment_id);
-      
-    } else if (event === 'subscription.cancelled' || event === 'subscription.expired' || event === 'payment.failed') {
-      const { customer_email, metadata, subscription_id } = data;
-      
-      console.log(`❌ Premium subscription cancelled/expired for user: ${customer_email}`);
+      console.log(`📋 Subscription webhook received:`);
+      console.log(`Status: ${status}`);
+      console.log(`Customer: ${customer?.email}`);
       console.log(`User ID: ${metadata?.user_id}`);
       console.log(`Subscription ID: ${subscription_id}`);
       
-      // Update user subscription status to inactive
-      await updateUserSubscriptionStatus(metadata?.user_id, customer_email, false, subscription_id, null);
+      if (status === 'active') {
+        console.log(`✅ Premium subscription activated for user: ${customer?.email}`);
+        
+        // Update user subscription status in database
+        await updateUserSubscriptionStatus(
+          metadata?.user_id, 
+          customer?.email, 
+          true, 
+          subscription_id, 
+          null // No payment_id for subscription webhooks
+        );
+        
+      } else if (status === 'cancelled' || status === 'expired') {
+        console.log(`❌ Premium subscription cancelled/expired for user: ${customer?.email}`);
+        
+        // Update user subscription status to inactive
+        await updateUserSubscriptionStatus(
+          metadata?.user_id, 
+          customer?.email, 
+          false, 
+          subscription_id, 
+          null
+        );
+      }
       
+    } else if (webhookData.event) {
+      // Handle traditional event-based webhooks
+      const { event, data } = webhookData;
+      
+      if (event === 'payment.completed' || event === 'subscription.created' || event === 'subscription.activated') {
+        const { customer_email, metadata, subscription_id, payment_id } = data;
+        
+        console.log(`✅ Premium upgrade completed for user: ${customer_email}`);
+        console.log(`User ID: ${metadata?.user_id}`);
+        console.log(`Subscription ID: ${subscription_id}`);
+        console.log(`Payment ID: ${payment_id}`);
+        
+        // Update user subscription status in database
+        await updateUserSubscriptionStatus(metadata?.user_id, customer_email, true, subscription_id, payment_id);
+        
+      } else if (event === 'subscription.cancelled' || event === 'subscription.expired' || event === 'payment.failed') {
+        const { customer_email, metadata, subscription_id } = data;
+        
+        console.log(`❌ Premium subscription cancelled/expired for user: ${customer_email}`);
+        console.log(`User ID: ${metadata?.user_id}`);
+        console.log(`Subscription ID: ${subscription_id}`);
+        
+        // Update user subscription status to inactive
+        await updateUserSubscriptionStatus(metadata?.user_id, customer_email, false, subscription_id, null);
+        
+      } else {
+        console.log(`📝 Webhook event received: ${event}`);
+      }
     } else {
-      console.log(`📝 Webhook event received: ${event}`);
+      console.log('📝 Unknown webhook format received');
     }
 
     res.status(200).json({ received: true });
