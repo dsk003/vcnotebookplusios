@@ -92,6 +92,11 @@
                     <div class="note-form-header">
                         <input type="text" id="noteTitle" placeholder="Title" class="note-title-input">
                         <div class="note-actions">
+                            <button id="uploadFileBtn" class="upload-btn" title="Upload File" style="display: none;">
+                                <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+                                    <path d="M8 1V11M5.5 8.5L8 11L10.5 8.5M2 13H14" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+                                </svg>
+                            </button>
                             <button id="saveNoteBtn" class="save-btn" title="Save Note" style="display: none;">
                                 <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
                                     <path d="M13.333 4L6 11.333L2.667 8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
@@ -106,10 +111,23 @@
                         </div>
                     </div>
                     <textarea id="noteContent" placeholder="Start writing..." class="note-content-textarea"></textarea>
+                    
+                    <!-- File Attachments Section -->
+                    <div class="file-attachments" id="fileAttachments" style="display: none;">
+                        <div class="attachments-header">
+                            <h3>Attachments</h3>
+                        </div>
+                        <div class="attachments-list" id="attachmentsList">
+                            <!-- Files will be displayed here -->
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>
     </div>
+
+    <!-- Hidden file input for uploads -->
+    <input type="file" id="fileInput" style="display: none;" multiple accept="image/*,video/*,application/pdf,text/*,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document">
 
     <!-- Loading Overlay -->
     <div class="loading-overlay" id="loadingOverlay" style="display: none;">

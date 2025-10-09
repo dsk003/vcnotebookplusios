@@ -12,6 +12,7 @@ class NotesApp {
         this.hasUnsavedChanges = false;
         this.useLocalStorage = false;
         this.searchTerm = '';
+        this.fileAttachments = [];
         
         this.init();
     }
@@ -119,6 +120,16 @@ class NotesApp {
         // Delete note button
         document.getElementById('deleteNoteBtn').addEventListener('click', () => {
             this.deleteCurrentNote();
+        });
+
+        // Upload file button
+        document.getElementById('uploadFileBtn').addEventListener('click', () => {
+            document.getElementById('fileInput').click();
+        });
+
+        // File input change
+        document.getElementById('fileInput').addEventListener('change', (e) => {
+            this.handleFileUpload(e.target.files);
         });
 
         // Search functionality
@@ -412,13 +423,17 @@ class NotesApp {
         }
     }
 
-    loadNoteContent(note) {
+    async loadNoteContent(note) {
         document.getElementById('noteTitle').value = note.title || '';
         document.getElementById('noteContent').value = note.content || '';
         document.getElementById('saveNoteBtn').style.display = 'block';
         document.getElementById('deleteNoteBtn').style.display = 'block';
+        document.getElementById('uploadFileBtn').style.display = 'block';
         this.hasUnsavedChanges = false;
         this.updateSaveButtonState();
+        
+        // Load file attachments for this note
+        await this.loadFileAttachments();
     }
 
     showNoteEditor() {
@@ -431,8 +446,12 @@ class NotesApp {
         document.getElementById('noteForm').style.display = 'none';
         document.getElementById('saveNoteBtn').style.display = 'none';
         document.getElementById('deleteNoteBtn').style.display = 'none';
+        document.getElementById('uploadFileBtn').style.display = 'none';
         this.currentNoteId = null;
         this.hasUnsavedChanges = false;
+        
+        // Hide file attachments section
+        document.getElementById('fileAttachments').style.display = 'none';
     }
 
     createNewNote() {
@@ -442,9 +461,14 @@ class NotesApp {
         document.getElementById('noteContent').value = '';
         document.getElementById('saveNoteBtn').style.display = 'block';
         document.getElementById('deleteNoteBtn').style.display = 'none';
+        document.getElementById('uploadFileBtn').style.display = 'block';
         this.hasUnsavedChanges = false;
         this.updateSaveButtonState();
         document.getElementById('noteTitle').focus();
+        
+        // Clear file attachments for new note
+        this.fileAttachments = [];
+        this.renderFileAttachments();
     }
 
     markAsChanged() {
@@ -749,6 +773,297 @@ class NotesApp {
     deleteNoteFromLocalStorage(noteId) {
         this.notes = this.notes.filter(n => n.id !== noteId);
         this.saveNotesToLocalStorage();
+    }
+
+    // File Upload Methods
+    async handleFileUpload(files) {
+        if (!files || files.length === 0) return;
+        
+        this.showDebugMessage(`🔍 Debug: Starting file upload for ${files.length} file(s)`);
+        
+        for (const file of files) {
+            await this.uploadFile(file);
+        }
+        
+        // Clear the file input
+        document.getElementById('fileInput').value = '';
+    }
+
+    async uploadFile(file) {
+        this.showDebugMessage(`🔍 Debug: Uploading file: ${file.name} (${this.formatFileSize(file.size)})`);
+        
+        try {
+            // Validate file size (50MB limit)
+            const maxSize = 50 * 1024 * 1024; // 50MB
+            if (file.size > maxSize) {
+                this.showMessage(`File ${file.name} is too large. Maximum size is 50MB.`, 'error');
+                return;
+            }
+
+            // Generate unique file path
+            const fileExt = file.name.split('.').pop();
+            const fileName = `${Date.now()}-${Math.random().toString(36).substring(2)}.${fileExt}`;
+            const filePath = `${this.currentUser.uid}/${fileName}`;
+
+            this.showDebugMessage(`🔍 Debug: Uploading to path: ${filePath}`);
+
+            // Upload to Supabase Storage
+            const { data, error } = await this.supabase.storage
+                .from('note-attachments')
+                .upload(filePath, file);
+
+            if (error) {
+                this.showDebugMessage(`❌ Debug: Upload error: ${JSON.stringify(error, null, 2)}`);
+                throw error;
+            }
+
+            this.showDebugMessage(`✅ Debug: File uploaded successfully: ${data.path}`);
+
+            // Save file metadata to database
+            const attachmentData = {
+                note_id: this.currentNoteId,
+                user_id: this.currentUser.uid,
+                file_name: file.name,
+                file_size: file.size,
+                file_type: file.type,
+                storage_path: data.path,
+                storage_bucket: 'note-attachments'
+            };
+
+            const { data: attachment, error: dbError } = await this.supabase
+                .from('file_attachments')
+                .insert([attachmentData])
+                .select()
+                .single();
+
+            if (dbError) {
+                this.showDebugMessage(`❌ Debug: Database error: ${JSON.stringify(dbError, null, 2)}`);
+                throw dbError;
+            }
+
+            this.showDebugMessage(`✅ Debug: File attachment saved to database`);
+
+            // Add to local attachments array
+            this.fileAttachments.push(attachment);
+            this.renderFileAttachments();
+            
+            this.showMessage(`File "${file.name}" uploaded successfully!`, 'success');
+
+        } catch (error) {
+            console.error('Error uploading file:', error);
+            this.showDebugMessage(`❌ Debug: Upload failed: ${error.message}`);
+            this.showMessage(`Error uploading file: ${error.message}`, 'error');
+        }
+    }
+
+    async loadFileAttachments() {
+        if (!this.currentNoteId) {
+            this.fileAttachments = [];
+            this.renderFileAttachments();
+            return;
+        }
+
+        try {
+            this.showDebugMessage(`🔍 Debug: Loading file attachments for note: ${this.currentNoteId}`);
+
+            const { data, error } = await this.supabase
+                .from('file_attachments')
+                .select('*')
+                .eq('note_id', this.currentNoteId)
+                .eq('user_id', this.currentUser.uid)
+                .order('created_at', { ascending: false });
+
+            if (error) {
+                this.showDebugMessage(`❌ Debug: Error loading attachments: ${JSON.stringify(error, null, 2)}`);
+                throw error;
+            }
+
+            this.fileAttachments = data || [];
+            this.showDebugMessage(`✅ Debug: Loaded ${this.fileAttachments.length} file attachments`);
+            this.renderFileAttachments();
+
+        } catch (error) {
+            console.error('Error loading file attachments:', error);
+            this.showDebugMessage(`❌ Debug: Failed to load attachments: ${error.message}`);
+            this.fileAttachments = [];
+            this.renderFileAttachments();
+        }
+    }
+
+    renderFileAttachments() {
+        const attachmentsList = document.getElementById('attachmentsList');
+        const fileAttachments = document.getElementById('fileAttachments');
+
+        if (this.fileAttachments.length === 0) {
+            fileAttachments.style.display = 'none';
+            return;
+        }
+
+        fileAttachments.style.display = 'block';
+        attachmentsList.innerHTML = this.fileAttachments.map(attachment => 
+            this.createAttachmentHTML(attachment)
+        ).join('');
+
+        // Add event listeners for attachment actions
+        attachmentsList.querySelectorAll('.attachment-btn.download').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                const attachmentId = e.target.closest('.attachment-item').dataset.attachmentId;
+                this.downloadAttachment(attachmentId);
+            });
+        });
+
+        attachmentsList.querySelectorAll('.attachment-btn.delete').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                const attachmentId = e.target.closest('.attachment-item').dataset.attachmentId;
+                this.deleteAttachment(attachmentId);
+            });
+        });
+    }
+
+    createAttachmentHTML(attachment) {
+        const fileIcon = this.getFileIcon(attachment.file_type);
+        const fileSize = this.formatFileSize(attachment.file_size);
+
+        return `
+            <div class="attachment-item" data-attachment-id="${attachment.id}">
+                <div class="attachment-icon">${fileIcon}</div>
+                <div class="attachment-info">
+                    <div class="attachment-name">${this.escapeHtml(attachment.file_name)}</div>
+                    <div class="attachment-size">${fileSize}</div>
+                </div>
+                <div class="attachment-actions">
+                    <button class="attachment-btn download" title="Download">
+                        <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
+                            <path d="M8 1V11M5.5 8.5L8 11L10.5 8.5M2 13H14" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+                        </svg>
+                    </button>
+                    <button class="attachment-btn delete" title="Delete">
+                        <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
+                            <path d="M2 4H14M5.333 4V2.667C5.333 2.313 5.473 1.974 5.723 1.724C5.973 1.474 6.312 1.333 6.667 1.333H9.333C9.688 1.333 10.027 1.474 10.277 1.724C10.527 1.974 10.667 2.313 10.667 2.667V4M12.667 4V13.333C12.667 13.688 12.527 14.027 12.277 14.277C12.027 14.527 11.688 14.667 11.333 14.667H4.667C4.312 14.667 3.973 14.527 3.723 14.277C3.473 14.027 3.333 13.688 3.333 13.333V4H12.667Z" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+                            <path d="M6.667 7.333V11.333M9.333 7.333V11.333" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+                        </svg>
+                    </button>
+                </div>
+            </div>
+        `;
+    }
+
+    getFileIcon(fileType) {
+        if (fileType.startsWith('image/')) {
+            return `<svg width="24" height="24" viewBox="0 0 24 24" fill="none">
+                <rect x="3" y="3" width="18" height="18" rx="2" ry="2" stroke="currentColor" stroke-width="2"/>
+                <circle cx="8.5" cy="8.5" r="1.5" stroke="currentColor" stroke-width="2"/>
+                <polyline points="21,15 16,10 5,21" stroke="currentColor" stroke-width="2"/>
+            </svg>`;
+        } else if (fileType.startsWith('video/')) {
+            return `<svg width="24" height="24" viewBox="0 0 24 24" fill="none">
+                <polygon points="5,3 19,12 5,21" stroke="currentColor" stroke-width="2"/>
+            </svg>`;
+        } else if (fileType === 'application/pdf') {
+            return `<svg width="24" height="24" viewBox="0 0 24 24" fill="none">
+                <path d="M14,2H6A2,2 0 0,0 4,4V20A2,2 0 0,0 6,22H18A2,2 0 0,0 20,20V8L14,2Z" stroke="currentColor" stroke-width="2"/>
+                <polyline points="14,2 14,8 20,8" stroke="currentColor" stroke-width="2"/>
+                <line x1="16" y1="13" x2="8" y2="13" stroke="currentColor" stroke-width="2"/>
+                <line x1="16" y1="17" x2="8" y2="17" stroke="currentColor" stroke-width="2"/>
+                <polyline points="10,9 9,9 8,9" stroke="currentColor" stroke-width="2"/>
+            </svg>`;
+        } else {
+            return `<svg width="24" height="24" viewBox="0 0 24 24" fill="none">
+                <path d="M14,2H6A2,2 0 0,0 4,4V20A2,2 0 0,0 6,22H18A2,2 0 0,0 20,20V8L14,2Z" stroke="currentColor" stroke-width="2"/>
+                <polyline points="14,2 14,8 20,8" stroke="currentColor" stroke-width="2"/>
+                <line x1="16" y1="13" x2="8" y2="13" stroke="currentColor" stroke-width="2"/>
+                <line x1="16" y1="17" x2="8" y2="17" stroke="currentColor" stroke-width="2"/>
+            </svg>`;
+        }
+    }
+
+    formatFileSize(bytes) {
+        if (bytes === 0) return '0 Bytes';
+        const k = 1024;
+        const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+        const i = Math.floor(Math.log(bytes) / Math.log(k));
+        return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+    }
+
+    async downloadAttachment(attachmentId) {
+        const attachment = this.fileAttachments.find(a => a.id === attachmentId);
+        if (!attachment) return;
+
+        try {
+            this.showDebugMessage(`🔍 Debug: Downloading file: ${attachment.file_name}`);
+
+            const { data, error } = await this.supabase.storage
+                .from(attachment.storage_bucket)
+                .download(attachment.storage_path);
+
+            if (error) {
+                this.showDebugMessage(`❌ Debug: Download error: ${JSON.stringify(error, null, 2)}`);
+                throw error;
+            }
+
+            // Create download link
+            const url = URL.createObjectURL(data);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = attachment.file_name;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+
+            this.showDebugMessage(`✅ Debug: File downloaded successfully`);
+            this.showMessage(`Downloaded "${attachment.file_name}"`, 'success');
+
+        } catch (error) {
+            console.error('Error downloading file:', error);
+            this.showDebugMessage(`❌ Debug: Download failed: ${error.message}`);
+            this.showMessage(`Error downloading file: ${error.message}`, 'error');
+        }
+    }
+
+    async deleteAttachment(attachmentId) {
+        const attachment = this.fileAttachments.find(a => a.id === attachmentId);
+        if (!attachment) return;
+
+        if (!confirm(`Are you sure you want to delete "${attachment.file_name}"?`)) return;
+
+        try {
+            this.showDebugMessage(`🔍 Debug: Deleting attachment: ${attachment.file_name}`);
+
+            // Delete from storage
+            const { error: storageError } = await this.supabase.storage
+                .from(attachment.storage_bucket)
+                .remove([attachment.storage_path]);
+
+            if (storageError) {
+                this.showDebugMessage(`❌ Debug: Storage delete error: ${JSON.stringify(storageError, null, 2)}`);
+                // Continue with database deletion even if storage deletion fails
+            }
+
+            // Delete from database
+            const { error: dbError } = await this.supabase
+                .from('file_attachments')
+                .delete()
+                .eq('id', attachmentId)
+                .eq('user_id', this.currentUser.uid);
+
+            if (dbError) {
+                this.showDebugMessage(`❌ Debug: Database delete error: ${JSON.stringify(dbError, null, 2)}`);
+                throw dbError;
+            }
+
+            // Remove from local array
+            this.fileAttachments = this.fileAttachments.filter(a => a.id !== attachmentId);
+            this.renderFileAttachments();
+
+            this.showDebugMessage(`✅ Debug: Attachment deleted successfully`);
+            this.showMessage(`Deleted "${attachment.file_name}"`, 'success');
+
+        } catch (error) {
+            console.error('Error deleting attachment:', error);
+            this.showDebugMessage(`❌ Debug: Delete failed: ${error.message}`);
+            this.showMessage(`Error deleting file: ${error.message}`, 'error');
+        }
     }
 }
 
