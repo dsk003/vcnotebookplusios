@@ -3,39 +3,61 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Simple Note App</title>
+    <title>Notes App</title>
     <link rel="stylesheet" href="styles.css">
+    <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
 </head>
 <body>
-    <div class="container">
-        <header>
-            <h1>📝 Simple Note App</h1>
-            <p>Create and manage your notes easily</p>
-        </header>
-
-        <div class="note-form">
-            <h2>Create New Note</h2>
-            <form id="noteForm">
-                <div class="form-group">
-                    <label for="noteTitle">Title:</label>
-                    <input type="text" id="noteTitle" placeholder="Enter note title..." required>
-                </div>
-                <div class="form-group">
-                    <label for="noteContent">Content:</label>
-                    <textarea id="noteContent" placeholder="Write your note here..." rows="5" required></textarea>
-                </div>
-                <button type="submit" class="btn-primary">Create Note</button>
-            </form>
-        </div>
-
-        <div class="notes-section">
-            <h2>Your Notes</h2>
-            <div id="notesList" class="notes-list">
+    <div class="app-container">
+        <!-- Sidebar -->
+        <div class="sidebar">
+            <div class="sidebar-header">
+                <h1>Notes</h1>
+                <button id="newNoteBtn" class="new-note-btn" title="New Note">
+                    <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+                        <path d="M8 1V15M1 8H15" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                    </svg>
+                </button>
+            </div>
+            <div class="notes-list" id="notesList">
                 <div class="no-notes">
-                    <p>No notes yet. Create your first note above!</p>
+                    <p>No notes yet</p>
+                    <p class="subtitle">Create your first note</p>
                 </div>
             </div>
         </div>
+
+        <!-- Main Content Area -->
+        <div class="main-content">
+            <div class="note-editor" id="noteEditor">
+                <div class="welcome-screen" id="welcomeScreen">
+                    <div class="welcome-content">
+                        <h2>Welcome to Notes</h2>
+                        <p>Select a note from the sidebar or create a new one to get started.</p>
+                    </div>
+                </div>
+                
+                <div class="note-form" id="noteForm" style="display: none;">
+                    <div class="note-form-header">
+                        <input type="text" id="noteTitle" placeholder="Title" class="note-title-input">
+                        <div class="note-actions">
+                            <button id="deleteNoteBtn" class="delete-btn" title="Delete Note" style="display: none;">
+                                <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+                                    <path d="M2 4H14M5.333 4V2.667C5.333 2.313 5.473 1.974 5.723 1.724C5.973 1.474 6.312 1.333 6.667 1.333H9.333C9.688 1.333 10.027 1.474 10.277 1.724C10.527 1.974 10.667 2.313 10.667 2.667V4M12.667 4V13.333C12.667 13.688 12.527 14.027 12.277 14.277C12.027 14.527 11.688 14.667 11.333 14.667H4.667C4.312 14.667 3.973 14.527 3.723 14.277C3.473 14.027 3.333 13.688 3.333 13.333V4H12.667Z" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+                                    <path d="M6.667 7.333V11.333M9.333 7.333V11.333" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+                                </svg>
+                            </button>
+                        </div>
+                    </div>
+                    <textarea id="noteContent" placeholder="Start writing..." class="note-content-textarea"></textarea>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Loading Overlay -->
+    <div class="loading-overlay" id="loadingOverlay" style="display: none;">
+        <div class="loading-spinner"></div>
     </div>
 
     <script src="script.js"></script>
