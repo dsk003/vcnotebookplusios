@@ -931,6 +931,17 @@ class NotesApp {
 
             this.renderFileAttachments();
             this.showMessage(`File "${file.name}" uploaded successfully!`, 'success');
+            
+            // Load media preview immediately if it's an image or video
+            if (this.isImageFile(file.name) || this.isVideoFile(file.name)) {
+                const attachment = this.currentNoteId ? 
+                    this.fileAttachments[this.fileAttachments.length - 1] : 
+                    this.tempFileAttachments[this.tempFileAttachments.length - 1];
+                
+                if (attachment) {
+                    await this.loadMediaPreview(attachment);
+                }
+            }
 
         } catch (error) {
             console.error('Error uploading file:', error);
@@ -1048,11 +1059,73 @@ class NotesApp {
                 this.deleteAttachment(attachmentId);
             });
         });
+
+        // Load media previews for images and videos
+        this.loadMediaPreviews();
+    }
+
+    async loadMediaPreviews() {
+        const allAttachments = [...this.fileAttachments, ...this.tempFileAttachments];
+        const mediaAttachments = allAttachments.filter(attachment => 
+            this.isImageFile(attachment.file_name) || this.isVideoFile(attachment.file_name)
+        );
+
+        for (const attachment of mediaAttachments) {
+            await this.loadMediaPreview(attachment);
+        }
+    }
+
+    async loadMediaPreview(attachment) {
+        const previewContainer = document.querySelector(`.media-preview[data-attachment-id="${attachment.id}"]`);
+        if (!previewContainer) return;
+
+        try {
+            const previewUrl = await this.getFilePreviewUrl(attachment);
+            if (!previewUrl) {
+                previewContainer.innerHTML = '<div class="media-error">Failed to load preview</div>';
+                return;
+            }
+
+            const isImage = this.isImageFile(attachment.file_name);
+            const isVideo = this.isVideoFile(attachment.file_name);
+
+            if (isImage) {
+                previewContainer.innerHTML = `
+                    <div class="image-preview">
+                        <img src="${previewUrl}" alt="${attachment.file_name}" loading="lazy" />
+                    </div>
+                `;
+            } else if (isVideo) {
+                previewContainer.innerHTML = `
+                    <div class="video-preview">
+                        <video controls preload="metadata">
+                            <source src="${previewUrl}" type="${attachment.file_type}">
+                            Your browser does not support the video tag.
+                        </video>
+                    </div>
+                `;
+            }
+
+        } catch (error) {
+            console.error('Error loading media preview:', error);
+            previewContainer.innerHTML = '<div class="media-error">Failed to load preview</div>';
+        }
     }
 
     createAttachmentHTML(attachment) {
         const fileIcon = this.getFileIcon(attachment.file_type);
         const fileSize = this.formatFileSize(attachment.file_size);
+        const isImage = this.isImageFile(attachment.file_name);
+        const isVideo = this.isVideoFile(attachment.file_name);
+        
+        let mediaPreview = '';
+        if (isImage || isVideo) {
+            mediaPreview = `
+                <div class="media-preview" data-attachment-id="${attachment.id}">
+                    <div class="media-loading">Loading preview...</div>
+                </div>
+            `;
+        }
 
         return `
             <div class="attachment-item" data-attachment-id="${attachment.id}">
@@ -1074,6 +1147,7 @@ class NotesApp {
                         </svg>
                     </button>
                 </div>
+                ${mediaPreview}
             </div>
         `;
     }
@@ -1113,6 +1187,46 @@ class NotesApp {
         const sizes = ['Bytes', 'KB', 'MB', 'GB'];
         const i = Math.floor(Math.log(bytes) / Math.log(k));
         return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+    }
+
+    isImageFile(fileName) {
+        const imageExtensions = ['jpg', 'jpeg', 'png', 'gif', 'bmp', 'webp', 'svg', 'tiff', 'ico'];
+        const extension = fileName.split('.').pop().toLowerCase();
+        return imageExtensions.includes(extension);
+    }
+
+    isVideoFile(fileName) {
+        const videoExtensions = ['mp4', 'avi', 'mov', 'wmv', 'flv', 'webm', 'mkv', 'm4v', '3gp', 'ogv'];
+        const extension = fileName.split('.').pop().toLowerCase();
+        return videoExtensions.includes(extension);
+    }
+
+    async getFilePreviewUrl(attachment) {
+        try {
+            if (attachment.is_temp) {
+                // For temporary files, we need to get the URL from storage
+                const { data, error } = await this.supabaseStorage.storage
+                    .from(attachment.storage_bucket)
+                    .createSignedUrl(attachment.storage_path, 3600); // 1 hour expiry
+
+                if (error) {
+                    this.showDebugMessage(`❌ Debug: Error creating signed URL for temp file: ${error.message}`);
+                    return null;
+                }
+
+                return data.signedUrl;
+            } else {
+                // For saved files, get public URL
+                const { data } = this.supabaseStorage.storage
+                    .from(attachment.storage_bucket)
+                    .getPublicUrl(attachment.storage_path);
+
+                return data.publicUrl;
+            }
+        } catch (error) {
+            this.showDebugMessage(`❌ Debug: Error getting preview URL: ${error.message}`);
+            return null;
+        }
     }
 
     async downloadAttachment(attachmentId) {
