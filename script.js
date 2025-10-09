@@ -11,26 +11,35 @@ class NotesApp {
     }
 
     async init() {
-        this.setupSupabase();
+        await this.setupSupabase();
         this.bindEvents();
         await this.loadNotes();
         this.showWelcomeScreen();
     }
 
-    setupSupabase() {
-        // Replace with your actual Supabase credentials
-        const supabaseUrl = 'YOUR_SUPABASE_URL';
-        const supabaseKey = 'YOUR_SUPABASE_ANON_KEY';
-        
-        if (supabaseUrl === 'YOUR_SUPABASE_URL' || supabaseKey === 'YOUR_SUPABASE_ANON_KEY') {
-            console.warn('Please configure your Supabase credentials in script.js');
-            // For demo purposes, we'll use localStorage as fallback
-            this.useLocalStorage = true;
-            return;
-        }
+    async setupSupabase() {
+        try {
+            // Fetch Supabase configuration from server
+            const response = await fetch('/api/config');
+            const config = await response.json();
+            
+            const supabaseUrl = config.supabaseUrl;
+            const supabaseKey = config.supabaseAnonKey;
+            
+            if (!supabaseUrl || !supabaseKey) {
+                console.warn('Supabase credentials not found in environment variables');
+                this.useLocalStorage = true;
+                return;
+            }
 
-        this.supabase = supabase.createClient(supabaseUrl, supabaseKey);
-        this.useLocalStorage = false;
+            this.supabase = supabase.createClient(supabaseUrl, supabaseKey);
+            this.useLocalStorage = false;
+            console.log('Supabase client initialized successfully');
+        } catch (error) {
+            console.error('Error fetching Supabase configuration:', error);
+            console.warn('Falling back to localStorage');
+            this.useLocalStorage = true;
+        }
     }
 
     bindEvents() {

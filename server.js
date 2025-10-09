@@ -12,6 +12,14 @@ app.get('/healthz', (_req, res) => {
   res.status(200).send('ok');
 });
 
+// Serve Supabase configuration
+app.get('/api/config', (_req, res) => {
+  res.json({
+    supabaseUrl: process.env.SUPABASE_URL,
+    supabaseAnonKey: process.env.SUPABASE_ANON_KEY
+  });
+});
+
 // Fallback to index.html for root
 app.get('/', (_req, res) => {
   res.sendFile(path.join(__dirname, 'index.html'));
