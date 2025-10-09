@@ -414,6 +414,9 @@ class NotesApp {
 
                     if (error) {
                         this.showDebugMessage(`❌ Debug: Supabase update error: ${JSON.stringify(error, null, 2)}`);
+                        if (error.code === '42501') {
+                            this.showDebugMessage(`🔧 Debug: RLS Policy Error - This is a Row Level Security issue. Run the fix-rls-policy.sql script in Supabase.`);
+                        }
                         throw error;
                     }
                     
@@ -438,6 +441,9 @@ class NotesApp {
 
                     if (error) {
                         this.showDebugMessage(`❌ Debug: Supabase insert error: ${JSON.stringify(error, null, 2)}`);
+                        if (error.code === '42501') {
+                            this.showDebugMessage(`🔧 Debug: RLS Policy Error - This is a Row Level Security issue. Run the fix-rls-policy.sql script in Supabase.`);
+                        }
                         throw error;
                     }
                     
