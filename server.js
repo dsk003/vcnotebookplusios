@@ -5,6 +5,9 @@ const DodoPayments = require('dodopayments');
 const app = express();
 const port = process.env.PORT || 3000;
 
+// Middleware to parse JSON bodies
+app.use(express.json());
+
 // Serve static files from project root
 app.use(express.static(path.join(__dirname)));
 
@@ -43,6 +46,8 @@ const dodoClient = new DodoPayments({
 app.post('/api/payments/create', async (req, res) => {
   try {
     console.log('Subscription creation request received:', req.body);
+    console.log('Request headers:', req.headers);
+    console.log('Request method:', req.method);
     
     const { userEmail, userId, billingAddress } = req.body;
     
