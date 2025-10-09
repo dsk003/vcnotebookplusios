@@ -69,14 +69,19 @@ app.post('/api/payments/create', async (req, res) => {
     const subscriptionData = {
       billing: billingAddress || defaultBilling,
       customer: { 
-        customer_id: userId,
-        email: userEmail,
-        name: userEmail.split('@')[0]
+        customer_id: userId
       },
       product_id: 'pdt_HL2gMRuyqiWflH2VZaLEU',
       quantity: 1,
-      success_url: `${req.protocol}://${req.get('host')}/payment-success`,
-      cancel_url: `${req.protocol}://${req.get('host')}/payment-cancel`
+      return_url: `${req.protocol}://${req.get('host')}/payment-success`,
+      payment_link: true,
+      show_saved_payment_methods: true,
+      allowed_payment_method_types: ['credit'],
+      metadata: {
+        user_id: userId,
+        user_email: userEmail,
+        product: 'premium_upgrade'
+      }
     };
 
     console.log('Creating subscription with data:', {
@@ -85,15 +90,40 @@ app.post('/api/payments/create', async (req, res) => {
       api_key: process.env.DODO_PAYMENTS_API_KEY ? 'SET' : 'NOT_SET'
     });
 
-    const subscription = await dodoClient.subscriptions.create(subscriptionData);
-
-    console.log('Subscription created successfully:', subscription);
+    let subscription;
     
-    // Return the payment_id for redirect
+    try {
+      // Try using the SDK first
+      subscription = await dodoClient.subscriptions.create(subscriptionData);
+      console.log('Subscription created successfully via SDK:', subscription);
+    } catch (sdkError) {
+      console.log('SDK failed, trying direct API call:', sdkError.message);
+      
+      // Fallback to direct API call
+      const response = await fetch('https://api.dodopayments.com/subscriptions', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${process.env.DODO_PAYMENTS_API_KEY}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(subscriptionData)
+      });
+
+      if (!response.ok) {
+        const errorData = await response.text();
+        throw new Error(`API call failed: ${response.status} - ${errorData}`);
+      }
+
+      subscription = await response.json();
+      console.log('Subscription created successfully via API:', subscription);
+    }
+    
+    // Return the payment_id and other relevant data for redirect
     res.json({
       payment_id: subscription.payment_id,
       subscription_id: subscription.id,
-      payment_url: subscription.payment_url || `https://checkout.dodopayments.com/pay/${subscription.payment_id}`
+      payment_url: subscription.payment_url || subscription.checkout_url || `https://checkout.dodopayments.com/pay/${subscription.payment_id}`,
+      status: subscription.status
     });
 
   } catch (error) {
