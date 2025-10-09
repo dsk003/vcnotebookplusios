@@ -143,6 +143,7 @@ class NotesApp {
                 this.showApp();
                 await this.loadNotes();
                 this.updateUserInfo();
+                this.checkUserSubscriptionStatus(); // Check subscription status
             } else {
                 this.currentUser = null;
                 this.showAuthScreen();
@@ -786,6 +787,49 @@ class NotesApp {
         } catch (error) {
             console.error('Checkout creation error:', error);
             this.showMessage(`Checkout error: ${error.message}`, 'error');
+        }
+    }
+
+    async checkUserSubscriptionStatus() {
+        if (!this.currentUser) {
+            return;
+        }
+
+        try {
+            const response = await fetch(`/api/user/subscription-status?userId=${this.currentUser.uid}`);
+            
+            if (!response.ok) {
+                console.error('Failed to fetch subscription status');
+                return;
+            }
+
+            const subscriptionData = await response.json();
+            console.log('User subscription status:', subscriptionData);
+            
+            // Update button based on subscription status
+            this.updatePremiumButton(subscriptionData.is_premium);
+
+        } catch (error) {
+            console.error('Error checking subscription status:', error);
+        }
+    }
+
+    updatePremiumButton(isPremium) {
+        const premiumBtn = document.getElementById('buyPremiumBtn');
+        const premiumText = premiumBtn.querySelector('.premium-text');
+        
+        if (isPremium) {
+            premiumText.textContent = 'Premium';
+            premiumBtn.title = 'You are a Premium user';
+            premiumBtn.style.background = 'linear-gradient(135deg, #34c759 0%, #30a46c 100%)';
+            premiumBtn.style.cursor = 'default';
+            premiumBtn.onclick = null; // Remove click handler
+        } else {
+            premiumText.textContent = 'Upgrade To Premium';
+            premiumBtn.title = 'Upgrade to Premium';
+            premiumBtn.style.background = 'linear-gradient(135deg, #ff6b6b 0%, #ee5a24 100%)';
+            premiumBtn.style.cursor = 'pointer';
+            premiumBtn.onclick = () => this.handleUpgradeToPremium();
         }
     }
 

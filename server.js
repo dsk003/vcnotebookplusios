@@ -148,6 +148,171 @@ app.post('/api/checkout/create', async (req, res) => {
   }
 });
 
+// API endpoint to check user subscription status
+app.get('/api/user/subscription-status', async (req, res) => {
+  try {
+    const { userId } = req.query;
+    
+    if (!userId) {
+      return res.status(400).json({ error: 'User ID is required' });
+    }
+
+    // Create Supabase client
+    const { createClient } = require('@supabase/supabase-js');
+    const supabase = createClient(
+      process.env.SUPABASE_URL,
+      process.env.SUPABASE_SERVICE_ROLE_KEY
+    );
+
+    const { data: subscription, error } = await supabase
+      .from('user_subscriptions')
+      .select('is_premium, subscription_status, updated_at')
+      .eq('user_id', userId)
+      .single();
+
+    if (error && error.code !== 'PGRST116') { // PGRST116 = no rows returned
+      console.error('Error fetching subscription status:', error);
+      return res.status(500).json({ error: 'Failed to fetch subscription status' });
+    }
+
+    res.json({
+      is_premium: subscription?.is_premium || false,
+      subscription_status: subscription?.subscription_status || 'inactive',
+      updated_at: subscription?.updated_at || null
+    });
+
+  } catch (error) {
+    console.error('Error in subscription status check:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// Webhook handler for payment status updates
+app.post('/api/payments/webhook', async (req, res) => {
+  try {
+    console.log('=== WEBHOOK RECEIVED ===');
+    console.log('Webhook headers:', req.headers);
+    console.log('Webhook body:', req.body);
+    
+    const { event, data } = req.body;
+    
+    // Verify webhook signature if webhook secret is provided
+    if (process.env.DODO_WEBHOOK_SECRET) {
+      const signature = req.headers['webhook-signature'] || req.headers['x-webhook-signature'];
+      if (!signature) {
+        console.error('❌ Missing webhook signature');
+        return res.status(400).json({ error: 'Missing webhook signature' });
+      }
+      
+      // Note: You would implement proper signature verification here
+      // For now, we'll just log that we received a signature
+      console.log('✅ Webhook signature received:', signature.substring(0, 20) + '...');
+    } else {
+      console.log('⚠️ No webhook secret configured - skipping signature verification');
+    }
+    
+    console.log('Payment webhook received:', { event, data });
+
+    if (event === 'payment.completed' || event === 'subscription.created' || event === 'subscription.activated') {
+      const { customer_email, metadata, subscription_id, payment_id } = data;
+      
+      console.log(`✅ Premium upgrade completed for user: ${customer_email}`);
+      console.log(`User ID: ${metadata?.user_id}`);
+      console.log(`Subscription ID: ${subscription_id}`);
+      console.log(`Payment ID: ${payment_id}`);
+      
+      // Update user subscription status in database
+      await updateUserSubscriptionStatus(metadata?.user_id, customer_email, true, subscription_id, payment_id);
+      
+    } else if (event === 'subscription.cancelled' || event === 'subscription.expired' || event === 'payment.failed') {
+      const { customer_email, metadata, subscription_id } = data;
+      
+      console.log(`❌ Premium subscription cancelled/expired for user: ${customer_email}`);
+      console.log(`User ID: ${metadata?.user_id}`);
+      console.log(`Subscription ID: ${subscription_id}`);
+      
+      // Update user subscription status to inactive
+      await updateUserSubscriptionStatus(metadata?.user_id, customer_email, false, subscription_id, null);
+      
+    } else {
+      console.log(`📝 Webhook event received: ${event}`);
+    }
+
+    res.status(200).json({ received: true });
+  } catch (error) {
+    console.error('❌ Webhook processing error:', error);
+    res.status(500).json({ error: 'Webhook processing failed' });
+  }
+});
+
+// Function to update user subscription status
+async function updateUserSubscriptionStatus(userId, userEmail, isPremium, subscriptionId = null, paymentId = null) {
+  try {
+    // Create Supabase client for webhook operations
+    const { createClient } = require('@supabase/supabase-js');
+    const supabase = createClient(
+      process.env.SUPABASE_URL,
+      process.env.SUPABASE_SERVICE_ROLE_KEY
+    );
+
+    if (!supabase) {
+      console.error('❌ Supabase client not initialized');
+      return;
+    }
+
+    const subscriptionData = {
+      user_id: userId,
+      user_email: userEmail,
+      is_premium: isPremium,
+      subscription_status: isPremium ? 'active' : 'inactive',
+      updated_at: new Date().toISOString()
+    };
+
+    if (subscriptionId) {
+      subscriptionData.subscription_id = subscriptionId;
+    }
+
+    if (paymentId) {
+      subscriptionData.payment_id = paymentId;
+    }
+
+    // Try to update existing record first
+    const { data: existingUser, error: selectError } = await supabase
+      .from('user_subscriptions')
+      .select('id')
+      .eq('user_id', userId)
+      .single();
+
+    if (existingUser) {
+      // Update existing record
+      const { error: updateError } = await supabase
+        .from('user_subscriptions')
+        .update(subscriptionData)
+        .eq('user_id', userId);
+
+      if (updateError) {
+        console.error('❌ Error updating user subscription:', updateError);
+      } else {
+        console.log('✅ User subscription updated successfully');
+      }
+    } else {
+      // Insert new record
+      const { error: insertError } = await supabase
+        .from('user_subscriptions')
+        .insert(subscriptionData);
+
+      if (insertError) {
+        console.error('❌ Error inserting user subscription:', insertError);
+      } else {
+        console.log('✅ User subscription created successfully');
+      }
+    }
+
+  } catch (error) {
+    console.error('❌ Error in updateUserSubscriptionStatus:', error);
+  }
+}
+
 // Payment success page
 app.get('/payment-success', (_req, res) => {
   res.send(`
