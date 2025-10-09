@@ -7,9 +7,11 @@ class NotesApp {
         this.currentUser = null;
         this.currentNoteId = null;
         this.notes = [];
+        this.filteredNotes = [];
         this.isLoading = false;
         this.hasUnsavedChanges = false;
         this.useLocalStorage = false;
+        this.searchTerm = '';
         
         this.init();
     }
@@ -119,6 +121,23 @@ class NotesApp {
             this.deleteCurrentNote();
         });
 
+        // Search functionality
+        const searchInput = document.getElementById('searchInput');
+        const clearSearchBtn = document.getElementById('clearSearchBtn');
+
+        searchInput.addEventListener('input', (e) => {
+            this.searchTerm = e.target.value.trim();
+            this.performSearch();
+            clearSearchBtn.style.display = this.searchTerm ? 'flex' : 'none';
+        });
+
+        clearSearchBtn.addEventListener('click', () => {
+            searchInput.value = '';
+            this.searchTerm = '';
+            this.performSearch();
+            clearSearchBtn.style.display = 'none';
+        });
+
         // Track changes for unsaved indicator
         const titleInput = document.getElementById('noteTitle');
         const contentTextarea = document.getElementById('noteContent');
@@ -220,6 +239,7 @@ class NotesApp {
                 this.showDebugMessage(`🔍 Debug: Notes data: ${JSON.stringify(this.notes, null, 2)}`);
             }
             
+            this.filteredNotes = [...this.notes];
             this.renderNotesList();
         } catch (error) {
             console.error('Error loading notes:', error);
@@ -228,6 +248,7 @@ class NotesApp {
             // Fallback to localStorage
             this.useLocalStorage = true;
             this.notes = this.loadNotesFromLocalStorage();
+            this.filteredNotes = [...this.notes];
             this.renderNotesList();
         } finally {
             this.showLoading(false);
@@ -237,17 +258,26 @@ class NotesApp {
     renderNotesList() {
         const notesList = document.getElementById('notesList');
         
-        if (this.notes.length === 0) {
-            notesList.innerHTML = `
-                <div class="no-notes">
-                    <p>No notes yet</p>
-                    <p class="subtitle">Create your first note</p>
-                </div>
-            `;
+        if (this.filteredNotes.length === 0) {
+            if (this.searchTerm) {
+                notesList.innerHTML = `
+                    <div class="no-notes">
+                        <p>No notes found</p>
+                        <p class="subtitle">Try a different search term</p>
+                    </div>
+                `;
+            } else {
+                notesList.innerHTML = `
+                    <div class="no-notes">
+                        <p>No notes yet</p>
+                        <p class="subtitle">Create your first note</p>
+                    </div>
+                `;
+            }
             return;
         }
 
-        notesList.innerHTML = this.notes.map(note => this.createNoteItemHTML(note)).join('');
+        notesList.innerHTML = this.filteredNotes.map(note => this.createNoteItemHTML(note)).join('');
         
         // Add click event listeners to note items
         notesList.querySelectorAll('.note-item').forEach(item => {
@@ -306,6 +336,69 @@ class NotesApp {
         this.updateActiveNote();
         this.showNoteEditor();
         this.loadNoteContent(note);
+    }
+
+    async performSearch() {
+        this.showDebugMessage(`🔍 Debug: Performing search for: "${this.searchTerm}"`);
+        
+        if (!this.searchTerm) {
+            // No search term, show all notes
+            this.filteredNotes = [...this.notes];
+            this.renderNotesList();
+            return;
+        }
+
+        try {
+            if (this.useLocalStorage) {
+                // Client-side search for localStorage
+                this.filteredNotes = this.notes.filter(note => {
+                    const searchLower = this.searchTerm.toLowerCase();
+                    return (
+                        note.title.toLowerCase().includes(searchLower) ||
+                        note.content.toLowerCase().includes(searchLower)
+                    );
+                });
+                this.showDebugMessage(`🔍 Debug: Found ${this.filteredNotes.length} notes in localStorage`);
+            } else {
+                // Server-side search using Supabase full-text search
+                this.showDebugMessage(`🔍 Debug: Using Supabase textSearch...`);
+                
+                const { data, error } = await this.supabase
+                    .from('notes')
+                    .select('*')
+                    .eq('user_id', this.currentUser.uid)
+                    .textSearch('title_content_fts', this.searchTerm)
+                    .order('updated_at', { ascending: false });
+
+                if (error) {
+                    this.showDebugMessage(`❌ Debug: Search error: ${JSON.stringify(error, null, 2)}`);
+                    // Fallback to client-side search
+                    this.filteredNotes = this.notes.filter(note => {
+                        const searchLower = this.searchTerm.toLowerCase();
+                        return (
+                            note.title.toLowerCase().includes(searchLower) ||
+                            note.content.toLowerCase().includes(searchLower)
+                        );
+                    });
+                } else {
+                    this.filteredNotes = data || [];
+                    this.showDebugMessage(`✅ Debug: Found ${this.filteredNotes.length} notes using Supabase textSearch`);
+                }
+            }
+            
+            this.renderNotesList();
+        } catch (error) {
+            this.showDebugMessage(`❌ Debug: Search failed: ${error.message}`);
+            // Fallback to client-side search
+            this.filteredNotes = this.notes.filter(note => {
+                const searchLower = this.searchTerm.toLowerCase();
+                return (
+                    note.title.toLowerCase().includes(searchLower) ||
+                    note.content.toLowerCase().includes(searchLower)
+                );
+            });
+            this.renderNotesList();
+        }
     }
 
     updateActiveNote() {
@@ -462,7 +555,14 @@ class NotesApp {
                 this.notes.unshift(savedNote);
             }
 
-            this.renderNotesList();
+            // Update filtered notes and re-run search if there's a search term
+            if (this.searchTerm) {
+                this.performSearch();
+            } else {
+                this.filteredNotes = [...this.notes];
+                this.renderNotesList();
+            }
+            
             this.updateActiveNote();
             this.hasUnsavedChanges = false;
             this.updateSaveButtonState();
@@ -497,7 +597,14 @@ class NotesApp {
             // Remove from local array
             this.notes = this.notes.filter(n => n.id !== this.currentNoteId);
             
-            this.renderNotesList();
+            // Update filtered notes and re-run search if there's a search term
+            if (this.searchTerm) {
+                this.performSearch();
+            } else {
+                this.filteredNotes = [...this.notes];
+                this.renderNotesList();
+            }
+            
             this.showWelcomeScreen();
             this.showMessage('Note deleted', 'success');
 
