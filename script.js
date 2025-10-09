@@ -1085,18 +1085,27 @@ class NotesApp {
             this.isImageFile(attachment.file_name) || this.isVideoFile(attachment.file_name)
         );
 
+        this.showDebugMessage(`🔍 Debug: Found ${mediaAttachments.length} media attachments to load`);
+        
         for (const attachment of mediaAttachments) {
+            this.showDebugMessage(`🔍 Debug: Loading preview for ${attachment.file_name} (ID: ${attachment.id})`);
             await this.loadMediaPreview(attachment);
         }
     }
 
     async loadMediaPreview(attachment) {
         const previewContainer = document.querySelector(`.media-preview[data-attachment-id="${attachment.id}"]`);
-        if (!previewContainer) return;
+        if (!previewContainer) {
+            this.showDebugMessage(`❌ Debug: Preview container not found for attachment ${attachment.id}`);
+            return;
+        }
+
+        this.showDebugMessage(`🔍 Debug: Loading media preview for ${attachment.file_name}`);
 
         try {
             const previewUrl = await this.getFilePreviewUrl(attachment);
             if (!previewUrl) {
+                this.showDebugMessage(`❌ Debug: No preview URL for ${attachment.file_name}`);
                 previewContainer.innerHTML = '<div class="media-error">Failed to load preview</div>';
                 return;
             }
@@ -1104,16 +1113,18 @@ class NotesApp {
             const isImage = this.isImageFile(attachment.file_name);
             const isVideo = this.isVideoFile(attachment.file_name);
 
+            this.showDebugMessage(`🔍 Debug: Creating ${isImage ? 'image' : 'video'} preview for ${attachment.file_name}`);
+
             if (isImage) {
                 previewContainer.innerHTML = `
                     <div class="image-preview">
-                        <img src="${previewUrl}" alt="${attachment.file_name}" loading="lazy" />
+                        <img src="${previewUrl}" alt="${attachment.file_name}" loading="lazy" onerror="this.parentElement.innerHTML='<div class=\\"media-error\\">Failed to load image</div>'" />
                     </div>
                 `;
             } else if (isVideo) {
                 previewContainer.innerHTML = `
                     <div class="video-preview">
-                        <video controls preload="metadata">
+                        <video controls preload="metadata" onerror="this.parentElement.innerHTML='<div class=\\"media-error\\">Failed to load video</div>'">
                             <source src="${previewUrl}" type="${attachment.file_type}">
                             Your browser does not support the video tag.
                         </video>
@@ -1121,8 +1132,11 @@ class NotesApp {
                 `;
             }
 
+            this.showDebugMessage(`✅ Debug: Media preview created for ${attachment.file_name}`);
+
         } catch (error) {
             console.error('Error loading media preview:', error);
+            this.showDebugMessage(`❌ Debug: Error loading media preview: ${error.message}`);
             previewContainer.innerHTML = '<div class="media-error">Failed to load preview</div>';
         }
     }
@@ -1218,26 +1232,19 @@ class NotesApp {
 
     async getFilePreviewUrl(attachment) {
         try {
-            if (attachment.is_temp) {
-                // For temporary files, we need to get the URL from storage
-                const { data, error } = await this.supabaseStorage.storage
-                    .from(attachment.storage_bucket)
-                    .createSignedUrl(attachment.storage_path, 3600); // 1 hour expiry
+            // Use signed URLs for all files to ensure access
+            const { data, error } = await this.supabaseStorage.storage
+                .from(attachment.storage_bucket)
+                .createSignedUrl(attachment.storage_path, 3600); // 1 hour expiry
 
-                if (error) {
-                    this.showDebugMessage(`❌ Debug: Error creating signed URL for temp file: ${error.message}`);
-                    return null;
-                }
-
-                return data.signedUrl;
-            } else {
-                // For saved files, get public URL
-                const { data } = this.supabaseStorage.storage
-                    .from(attachment.storage_bucket)
-                    .getPublicUrl(attachment.storage_path);
-
-                return data.publicUrl;
+            if (error) {
+                this.showDebugMessage(`❌ Debug: Error creating signed URL: ${error.message}`);
+                this.showDebugMessage(`❌ Debug: Bucket: ${attachment.storage_bucket}, Path: ${attachment.storage_path}`);
+                return null;
             }
+
+            this.showDebugMessage(`✅ Debug: Created signed URL for ${attachment.file_name}`);
+            return data.signedUrl;
         } catch (error) {
             this.showDebugMessage(`❌ Debug: Error getting preview URL: ${error.message}`);
             return null;
