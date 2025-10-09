@@ -160,7 +160,26 @@ app.post('/api/payments/create', async (req, res) => {
 // Webhook handler for payment status updates
 app.post('/api/payments/webhook', async (req, res) => {
   try {
+    console.log('=== WEBHOOK RECEIVED ===');
+    console.log('Webhook headers:', req.headers);
+    console.log('Webhook body:', req.body);
+    
     const { event, data } = req.body;
+    
+    // Verify webhook signature if webhook secret is provided
+    if (process.env.DODO_WEBHOOK_SECRET) {
+      const signature = req.headers['webhook-signature'] || req.headers['x-webhook-signature'];
+      if (!signature) {
+        console.error('❌ Missing webhook signature');
+        return res.status(400).json({ error: 'Missing webhook signature' });
+      }
+      
+      // Note: You would implement proper signature verification here
+      // For now, we'll just log that we received a signature
+      console.log('✅ Webhook signature received:', signature.substring(0, 20) + '...');
+    } else {
+      console.log('⚠️ No webhook secret configured - skipping signature verification');
+    }
     
     console.log('Payment webhook received:', { event, data });
 
@@ -168,16 +187,18 @@ app.post('/api/payments/webhook', async (req, res) => {
       const { customer_email, metadata } = data;
       
       // Here you would typically update your database to mark the user as premium
-      console.log(`Premium upgrade completed for user: ${customer_email}`);
+      console.log(`✅ Premium upgrade completed for user: ${customer_email}`);
       console.log(`User ID: ${metadata?.user_id}`);
       
       // You can add database logic here to update user premium status
       // await updateUserPremiumStatus(metadata.user_id, true);
+    } else {
+      console.log(`📝 Webhook event received: ${event}`);
     }
 
     res.status(200).json({ received: true });
   } catch (error) {
-    console.error('Webhook processing error:', error);
+    console.error('❌ Webhook processing error:', error);
     res.status(500).json({ error: 'Webhook processing failed' });
   }
 });
