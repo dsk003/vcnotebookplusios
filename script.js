@@ -741,16 +741,46 @@ class NotesApp {
         }, 3000);
     }
 
-    handleBuyPremium() {
-        // Show premium upgrade modal or redirect to payment page
-        this.showMessage('🚀 Premium upgrade coming soon! Stay tuned for amazing features!', 'success');
-        
-        // You can replace this with actual payment integration
-        // For example: window.open('https://your-payment-page.com', '_blank');
-        
-        // Log the premium upgrade attempt
-        console.log('Premium upgrade requested by user:', this.currentUser?.email);
-        this.showDebugMessage(`🔍 Debug: Premium upgrade requested by ${this.currentUser?.email || 'unknown user'}`);
+    async handleBuyPremium() {
+        if (!this.currentUser) {
+            this.showMessage('Please sign in to upgrade to premium', 'error');
+            return;
+        }
+
+        try {
+            this.showMessage('Creating payment link...', 'info');
+            this.showDebugMessage(`🔍 Debug: Creating payment for user: ${this.currentUser.email}`);
+
+            const response = await fetch('/api/payments/create', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    userEmail: this.currentUser.email,
+                    userId: this.currentUser.uid
+                })
+            });
+
+            if (!response.ok) {
+                const errorData = await response.json();
+                throw new Error(errorData.error || 'Failed to create payment');
+            }
+
+            const paymentData = await response.json();
+            
+            this.showDebugMessage(`✅ Debug: Payment link created: ${paymentData.payment_url}`);
+            
+            // Redirect to Dodo Payments checkout
+            window.open(paymentData.payment_url, '_blank');
+            
+            this.showMessage('Redirecting to secure payment page...', 'success');
+
+        } catch (error) {
+            console.error('Payment creation error:', error);
+            this.showDebugMessage(`❌ Debug: Payment creation failed: ${error.message}`);
+            this.showMessage(`Payment error: ${error.message}`, 'error');
+        }
     }
 
     showDebugMessage(message) {
