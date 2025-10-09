@@ -214,6 +214,35 @@ body {
     gap: 8px;
 }
 
+.save-btn {
+    width: 32px;
+    height: 32px;
+    border: none;
+    background-color: #34c759;
+    color: white;
+    border-radius: 8px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s ease;
+}
+
+.save-btn:hover {
+    background-color: #28a745;
+    transform: scale(1.05);
+}
+
+.save-btn:active {
+    transform: scale(0.95);
+}
+
+.save-btn:disabled {
+    background-color: #86868b;
+    cursor: not-allowed;
+    transform: none;
+}
+
 .delete-btn {
     width: 32px;
     height: 32px;

@@ -5,7 +5,7 @@ class NotesApp {
         this.currentNoteId = null;
         this.notes = [];
         this.isLoading = false;
-        this.autoSaveTimeout = null;
+        this.hasUnsavedChanges = false;
         
         this.init();
     }
@@ -48,21 +48,26 @@ class NotesApp {
             this.createNewNote();
         });
 
+        // Save note button
+        document.getElementById('saveNoteBtn').addEventListener('click', () => {
+            this.saveCurrentNote();
+        });
+
         // Delete note button
         document.getElementById('deleteNoteBtn').addEventListener('click', () => {
             this.deleteCurrentNote();
         });
 
-        // Auto-save on input
+        // Track changes for unsaved indicator
         const titleInput = document.getElementById('noteTitle');
         const contentTextarea = document.getElementById('noteContent');
 
         titleInput.addEventListener('input', () => {
-            this.scheduleAutoSave();
+            this.markAsChanged();
         });
 
         contentTextarea.addEventListener('input', () => {
-            this.scheduleAutoSave();
+            this.markAsChanged();
         });
 
         // Keyboard shortcuts
@@ -199,7 +204,10 @@ class NotesApp {
     loadNoteContent(note) {
         document.getElementById('noteTitle').value = note.title || '';
         document.getElementById('noteContent').value = note.content || '';
+        document.getElementById('saveNoteBtn').style.display = 'block';
         document.getElementById('deleteNoteBtn').style.display = 'block';
+        this.hasUnsavedChanges = false;
+        this.updateSaveButtonState();
     }
 
     showNoteEditor() {
@@ -210,8 +218,10 @@ class NotesApp {
     showWelcomeScreen() {
         document.getElementById('welcomeScreen').style.display = 'flex';
         document.getElementById('noteForm').style.display = 'none';
+        document.getElementById('saveNoteBtn').style.display = 'none';
         document.getElementById('deleteNoteBtn').style.display = 'none';
         this.currentNoteId = null;
+        this.hasUnsavedChanges = false;
     }
 
     createNewNote() {
@@ -219,18 +229,29 @@ class NotesApp {
         this.showNoteEditor();
         document.getElementById('noteTitle').value = '';
         document.getElementById('noteContent').value = '';
+        document.getElementById('saveNoteBtn').style.display = 'block';
         document.getElementById('deleteNoteBtn').style.display = 'none';
+        this.hasUnsavedChanges = false;
+        this.updateSaveButtonState();
         document.getElementById('noteTitle').focus();
     }
 
-    scheduleAutoSave() {
-        if (this.autoSaveTimeout) {
-            clearTimeout(this.autoSaveTimeout);
-        }
+    markAsChanged() {
+        this.hasUnsavedChanges = true;
+        this.updateSaveButtonState();
+    }
+
+    updateSaveButtonState() {
+        const saveBtn = document.getElementById('saveNoteBtn');
+        const title = document.getElementById('noteTitle').value.trim();
+        const content = document.getElementById('noteContent').value.trim();
         
-        this.autoSaveTimeout = setTimeout(() => {
-            this.saveCurrentNote();
-        }, 1000); // Auto-save after 1 second of inactivity
+        // Enable save button only if there are changes and content exists
+        if (this.hasUnsavedChanges && (title || content)) {
+            saveBtn.disabled = false;
+        } else {
+            saveBtn.disabled = true;
+        }
     }
 
     async saveCurrentNote() {
@@ -293,6 +314,9 @@ class NotesApp {
 
             this.renderNotesList();
             this.updateActiveNote();
+            this.hasUnsavedChanges = false;
+            this.updateSaveButtonState();
+            this.showMessage('Note saved successfully!', 'success');
 
         } catch (error) {
             console.error('Error saving note:', error);
