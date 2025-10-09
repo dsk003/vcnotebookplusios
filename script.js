@@ -741,15 +741,52 @@ class NotesApp {
         }, 3000);
     }
 
-    handleUpgradeToPremium() {
+    async handleUpgradeToPremium() {
         if (!this.currentUser) {
             this.showMessage('Please sign in to upgrade to premium', 'error');
             return;
         }
 
-        // Simple dummy handler for now
-        this.showMessage('Premium upgrade coming soon! 🚀', 'info');
-        console.log('Premium upgrade requested for user:', this.currentUser.email);
+        try {
+            this.showMessage('Creating checkout session...', 'info');
+            console.log('Creating checkout for user:', this.currentUser.email);
+
+            const response = await fetch('/api/checkout/create', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    userEmail: this.currentUser.email,
+                    userId: this.currentUser.uid
+                })
+            });
+
+            if (!response.ok) {
+                const errorData = await response.json();
+                console.error('Checkout creation error:', errorData);
+                throw new Error(errorData.error || `Server error: ${response.status}`);
+            }
+
+            const checkoutData = await response.json();
+            
+            console.log('Checkout created successfully:', checkoutData);
+            
+            // Check if checkout_url exists in response
+            if (!checkoutData.checkout_url) {
+                console.error('No checkout_url in response:', checkoutData);
+                throw new Error('Checkout URL not received from server');
+            }
+            
+            // Open DodoPayments checkout in a new tab
+            window.open(checkoutData.checkout_url, '_blank');
+            
+            this.showMessage('Opening secure checkout page...', 'success');
+
+        } catch (error) {
+            console.error('Checkout creation error:', error);
+            this.showMessage(`Checkout error: ${error.message}`, 'error');
+        }
     }
 
     showDebugMessage(message) {
