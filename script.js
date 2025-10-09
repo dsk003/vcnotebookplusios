@@ -514,7 +514,7 @@ class NotesApp {
         document.getElementById('noteContent').value = '';
         document.getElementById('saveNoteBtn').style.display = 'block';
         document.getElementById('deleteNoteBtn').style.display = 'none';
-        document.getElementById('uploadFileBtn').style.display = 'block';
+        document.getElementById('uploadFileBtn').style.display = 'none'; // Hide upload button until note is saved
         this.hasUnsavedChanges = false;
         this.updateSaveButtonState();
         document.getElementById('noteTitle').focus();
@@ -622,6 +622,8 @@ class NotesApp {
                 }
                 
                 this.currentNoteId = savedNote.id;
+                // Show upload button now that we have a note ID
+                document.getElementById('uploadFileBtn').style.display = 'block';
             }
 
             // Update local notes array
@@ -846,6 +848,12 @@ class NotesApp {
         this.showDebugMessage(`🔍 Debug: Uploading file: ${file.name} (${this.formatFileSize(file.size)})`);
         
         try {
+            // Check if a note is selected
+            if (!this.currentNoteId) {
+                this.showMessage('Please select or create a note before uploading files.', 'error');
+                return;
+            }
+
             // Validate file size (50MB limit)
             const maxSize = 50 * 1024 * 1024; // 50MB
             if (file.size > maxSize) {
@@ -859,26 +867,11 @@ class NotesApp {
             const filePath = `${this.currentUser.uid}/${fileName}`;
 
             this.showDebugMessage(`🔍 Debug: Uploading to path: ${filePath}`);
+            this.showDebugMessage(`🔍 Debug: Current note ID: ${this.currentNoteId}`);
+            this.showDebugMessage(`🔍 Debug: Current user ID: ${this.currentUser.uid}`);
 
-            // Try using the S3-compatible API directly
-            const s3Endpoint = 'https://ekilkblfamcxpyfcpasj.storage.supabase.co/storage/v1/s3';
-            const bucketName = 'note-attachments';
-            const fullPath = `${bucketName}/${filePath}`;
-            
-            this.showDebugMessage(`🔍 Debug: Using S3 endpoint: ${s3Endpoint}`);
-            this.showDebugMessage(`🔍 Debug: Full S3 path: ${fullPath}`);
-
-            // Get the service role key for authentication
-            const configResponse = await fetch('/api/config');
-            const config = await configResponse.json();
-            const serviceKey = config.supabaseServiceKey;
-
-            if (!serviceKey) {
-                throw new Error('Service role key not available');
-            }
-
-            // Try using Supabase Storage API instead of S3-compatible API
-            this.showDebugMessage(`🔍 Debug: Falling back to Supabase Storage API`);
+            // Use Supabase Storage API
+            this.showDebugMessage(`🔍 Debug: Using Supabase Storage API`);
             
             const { data, error } = await this.supabaseStorage.storage
                 .from('note-attachments')
