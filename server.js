@@ -39,25 +39,38 @@ app.get('/api/firebase-config', (_req, res) => {
 // Dodo Payments API endpoints
 app.post('/api/payments/create', async (req, res) => {
   try {
-    console.log('Payment creation request received:', req.body);
+    console.log('=== PAYMENT CREATION REQUEST ===');
+    console.log('Request body:', req.body);
+    console.log('Request headers:', req.headers);
     
     const { userEmail, userId } = req.body;
     
     if (!userEmail || !userId) {
+      console.log('❌ Missing required fields:', { userEmail: !!userEmail, userId: !!userId });
       return res.status(400).json({ error: 'User email and ID are required' });
     }
 
     // Check if API key is available
     if (!process.env.DODO_PAYMENTS_API_KEY) {
-      console.error('DODO_PAYMENTS_API_KEY environment variable not set');
-      return res.status(500).json({ error: 'Payment system not configured' });
+      console.error('❌ DODO_PAYMENTS_API_KEY environment variable not set');
+      return res.status(500).json({ 
+        error: 'Payment system not configured',
+        details: 'DODO_PAYMENTS_API_KEY environment variable is missing'
+      });
     }
 
     // Check if product ID is available
     if (!process.env.PRODUCT_ID) {
-      console.error('PRODUCT_ID environment variable not set');
-      return res.status(500).json({ error: 'Product not configured' });
+      console.error('❌ PRODUCT_ID environment variable not set');
+      return res.status(500).json({ 
+        error: 'Product not configured',
+        details: 'PRODUCT_ID environment variable is missing'
+      });
     }
+
+    console.log('✅ Environment variables check passed');
+    console.log('API Key present:', !!process.env.DODO_PAYMENTS_API_KEY);
+    console.log('Product ID present:', !!process.env.PRODUCT_ID);
 
     const paymentData = {
       payment_link: true,
@@ -87,10 +100,10 @@ app.post('/api/payments/create', async (req, res) => {
       }
     };
 
-    console.log('Creating payment with data:', {
-      ...paymentData,
-      api_key: process.env.DODO_PAYMENTS_API_KEY ? 'SET' : 'NOT_SET'
-    });
+    console.log('📤 Sending payment data to DodoPayments API:');
+    console.log('Payment data:', JSON.stringify(paymentData, null, 2));
+    console.log('API URL: https://api.dodopayments.com/v1/payments');
+    console.log('API Key (first 10 chars):', process.env.DODO_PAYMENTS_API_KEY?.substring(0, 10) + '...');
 
     const response = await fetch('https://api.dodopayments.com/v1/payments', {
       method: 'POST',
@@ -101,23 +114,29 @@ app.post('/api/payments/create', async (req, res) => {
       body: JSON.stringify(paymentData)
     });
 
-    console.log('Dodo Payments API response status:', response.status);
+    console.log('📥 DodoPayments API response:');
+    console.log('Status:', response.status);
+    console.log('Status Text:', response.statusText);
+    console.log('Headers:', Object.fromEntries(response.headers.entries()));
 
     if (!response.ok) {
       const errorData = await response.text();
-      console.error('Dodo Payments API error:', {
-        status: response.status,
-        statusText: response.statusText,
-        error: errorData
-      });
+      console.error('❌ DodoPayments API error:');
+      console.error('Status:', response.status);
+      console.error('Status Text:', response.statusText);
+      console.error('Error Response:', errorData);
+      
       return res.status(500).json({ 
         error: 'Failed to create payment',
-        details: errorData
+        details: errorData,
+        status: response.status,
+        statusText: response.statusText
       });
     }
 
     const paymentResponse = await response.json();
-    console.log('Payment created successfully:', paymentResponse);
+    console.log('✅ Payment created successfully:');
+    console.log('Payment Response:', JSON.stringify(paymentResponse, null, 2));
     
     res.json({
       payment_id: paymentResponse.payment_id,
@@ -125,13 +144,15 @@ app.post('/api/payments/create', async (req, res) => {
     });
 
   } catch (error) {
-    console.error('Payment creation error:', {
-      message: error.message,
-      stack: error.stack
-    });
+    console.error('❌ Payment creation error:');
+    console.error('Error message:', error.message);
+    console.error('Error stack:', error.stack);
+    console.error('Error name:', error.name);
+    
     res.status(500).json({ 
       error: 'Internal server error',
-      details: error.message
+      details: error.message,
+      stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
     });
   }
 });
