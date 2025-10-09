@@ -46,14 +46,19 @@ class NotesApp {
 
     async setupSupabase() {
         try {
+            this.showDebugMessage(`🔍 Debug: Setting up Supabase...`);
+            
             // Fetch Supabase configuration from server
             const response = await fetch('/api/config');
             const config = await response.json();
+            
+            this.showDebugMessage(`🔍 Debug: Supabase config response: ${JSON.stringify(config, null, 2)}`);
             
             const supabaseUrl = config.supabaseUrl;
             const supabaseKey = config.supabaseAnonKey;
             
             if (!supabaseUrl || !supabaseKey) {
+                this.showDebugMessage(`❌ Debug: Supabase credentials missing - URL: ${supabaseUrl ? 'Present' : 'Missing'}, Key: ${supabaseKey ? 'Present' : 'Missing'}`);
                 console.warn('Supabase credentials not found in environment variables');
                 this.useLocalStorage = true;
                 return;
@@ -61,8 +66,10 @@ class NotesApp {
 
             this.supabase = supabase.createClient(supabaseUrl, supabaseKey);
             this.useLocalStorage = false;
+            this.showDebugMessage(`✅ Debug: Supabase client initialized successfully`);
             console.log('Supabase client initialized successfully');
         } catch (error) {
+            this.showDebugMessage(`❌ Debug: Supabase setup error: ${error.message}`);
             console.error('Error fetching Supabase configuration:', error);
             console.warn('Falling back to localStorage');
             this.useLocalStorage = true;
@@ -188,24 +195,35 @@ class NotesApp {
 
     async loadNotes() {
         this.showLoading(true);
+        this.showDebugMessage(`🔍 Debug: Loading notes for user: ${this.currentUser.uid}`);
         
         try {
             if (this.useLocalStorage) {
+                this.showDebugMessage(`🔍 Debug: Loading from localStorage`);
                 this.notes = this.loadNotesFromLocalStorage();
+                this.showDebugMessage(`🔍 Debug: Loaded ${this.notes.length} notes from localStorage`);
             } else {
+                this.showDebugMessage(`🔍 Debug: Loading from Supabase...`);
                 const { data, error } = await this.supabase
                     .from('notes')
                     .select('*')
                     .eq('user_id', this.currentUser.uid)
                     .order('updated_at', { ascending: false });
 
-                if (error) throw error;
+                if (error) {
+                    this.showDebugMessage(`❌ Debug: Supabase load error: ${JSON.stringify(error, null, 2)}`);
+                    throw error;
+                }
+                
                 this.notes = data || [];
+                this.showDebugMessage(`✅ Debug: Loaded ${this.notes.length} notes from Supabase`);
+                this.showDebugMessage(`🔍 Debug: Notes data: ${JSON.stringify(this.notes, null, 2)}`);
             }
             
             this.renderNotesList();
         } catch (error) {
             console.error('Error loading notes:', error);
+            this.showDebugMessage(`❌ Debug: Load notes failed, falling back to localStorage: ${error.message}`);
             this.showMessage('Error loading notes', 'error');
             // Fallback to localStorage
             this.useLocalStorage = true;
@@ -367,14 +385,25 @@ class NotesApp {
             updated_at: new Date().toISOString()
         };
 
+        // Debug logging
+        this.showDebugMessage(`🔍 Debug: Starting save process...`);
+        this.showDebugMessage(`🔍 Debug: Using localStorage: ${this.useLocalStorage}`);
+        this.showDebugMessage(`🔍 Debug: Supabase client: ${this.supabase ? 'Available' : 'Not available'}`);
+        this.showDebugMessage(`🔍 Debug: Current user ID: ${this.currentUser.uid}`);
+        this.showDebugMessage(`🔍 Debug: Note data: ${JSON.stringify(noteData, null, 2)}`);
+
         try {
             let savedNote;
 
             if (this.currentNoteId) {
                 // Update existing note
+                this.showDebugMessage(`🔍 Debug: Updating existing note with ID: ${this.currentNoteId}`);
+                
                 if (this.useLocalStorage) {
                     savedNote = this.updateNoteInLocalStorage(this.currentNoteId, noteData);
+                    this.showDebugMessage(`🔍 Debug: Updated in localStorage successfully`);
                 } else {
+                    this.showDebugMessage(`🔍 Debug: Attempting Supabase update...`);
                     const { data, error } = await this.supabase
                         .from('notes')
                         .update(noteData)
@@ -383,24 +412,37 @@ class NotesApp {
                         .select()
                         .single();
 
-                    if (error) throw error;
+                    if (error) {
+                        this.showDebugMessage(`❌ Debug: Supabase update error: ${JSON.stringify(error, null, 2)}`);
+                        throw error;
+                    }
+                    
                     savedNote = data;
+                    this.showDebugMessage(`✅ Debug: Supabase update successful: ${JSON.stringify(savedNote, null, 2)}`);
                 }
             } else {
                 // Create new note
+                this.showDebugMessage(`🔍 Debug: Creating new note...`);
                 noteData.created_at = new Date().toISOString();
                 
                 if (this.useLocalStorage) {
                     savedNote = this.createNoteInLocalStorage(noteData);
+                    this.showDebugMessage(`🔍 Debug: Created in localStorage successfully`);
                 } else {
+                    this.showDebugMessage(`🔍 Debug: Attempting Supabase insert...`);
                     const { data, error } = await this.supabase
                         .from('notes')
                         .insert([noteData])
                         .select()
                         .single();
 
-                    if (error) throw error;
+                    if (error) {
+                        this.showDebugMessage(`❌ Debug: Supabase insert error: ${JSON.stringify(error, null, 2)}`);
+                        throw error;
+                    }
+                    
                     savedNote = data;
+                    this.showDebugMessage(`✅ Debug: Supabase insert successful: ${JSON.stringify(savedNote, null, 2)}`);
                 }
                 
                 this.currentNoteId = savedNote.id;
@@ -419,10 +461,12 @@ class NotesApp {
             this.hasUnsavedChanges = false;
             this.updateSaveButtonState();
             this.showMessage('Note saved successfully!', 'success');
+            this.showDebugMessage(`✅ Debug: Save process completed successfully`);
 
         } catch (error) {
             console.error('Error saving note:', error);
-            this.showMessage('Error saving note', 'error');
+            this.showDebugMessage(`❌ Debug: Save failed with error: ${error.message || JSON.stringify(error, null, 2)}`);
+            this.showMessage(`Error saving note: ${error.message}`, 'error');
         }
     }
 
@@ -490,6 +534,58 @@ class NotesApp {
                 }
             }, 300);
         }, 3000);
+    }
+
+    showDebugMessage(message) {
+        // Create debug console area if it doesn't exist
+        let debugConsole = document.getElementById('debugConsole');
+        if (!debugConsole) {
+            debugConsole = document.createElement('div');
+            debugConsole.id = 'debugConsole';
+            debugConsole.style.cssText = `
+                position: fixed;
+                bottom: 20px;
+                left: 20px;
+                width: 400px;
+                max-height: 300px;
+                background: rgba(0, 0, 0, 0.9);
+                color: #00ff00;
+                padding: 15px;
+                border-radius: 8px;
+                font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+                font-size: 12px;
+                line-height: 1.4;
+                overflow-y: auto;
+                z-index: 1002;
+                border: 1px solid #333;
+                box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+            `;
+            document.body.appendChild(debugConsole);
+        }
+
+        // Add timestamp and message
+        const timestamp = new Date().toLocaleTimeString();
+        const logEntry = document.createElement('div');
+        logEntry.style.cssText = `
+            margin-bottom: 5px;
+            word-wrap: break-word;
+            white-space: pre-wrap;
+        `;
+        logEntry.textContent = `[${timestamp}] ${message}`;
+        
+        debugConsole.appendChild(logEntry);
+        
+        // Auto-scroll to bottom
+        debugConsole.scrollTop = debugConsole.scrollHeight;
+        
+        // Keep only last 50 messages to prevent memory issues
+        const messages = debugConsole.children;
+        if (messages.length > 50) {
+            debugConsole.removeChild(messages[0]);
+        }
+        
+        // Also log to browser console
+        console.log(`[DEBUG] ${message}`);
     }
 
     escapeHtml(text) {
