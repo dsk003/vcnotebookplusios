@@ -1,20 +1,47 @@
-// Apple Notes Style App with Supabase Integration
+// Apple Notes Style App with Firebase Authentication and Supabase Integration
 class NotesApp {
     constructor() {
+        this.firebase = null;
+        this.auth = null;
         this.supabase = null;
+        this.currentUser = null;
         this.currentNoteId = null;
         this.notes = [];
         this.isLoading = false;
         this.hasUnsavedChanges = false;
+        this.useLocalStorage = false;
         
         this.init();
     }
 
     async init() {
-        await this.setupSupabase();
+        await this.setupFirebase();
         this.bindEvents();
-        await this.loadNotes();
-        this.showWelcomeScreen();
+        this.setupAuthStateListener();
+    }
+
+    async setupFirebase() {
+        try {
+            // Fetch Firebase configuration from server
+            const response = await fetch('/api/firebase-config');
+            const config = await response.json();
+            
+            if (!config.apiKey || !config.authDomain || !config.projectId) {
+                console.warn('Firebase configuration not found in environment variables');
+                this.showAuthScreen();
+                return;
+            }
+
+            // Initialize Firebase
+            this.firebase = firebase;
+            this.firebase.initializeApp(config);
+            this.auth = this.firebase.auth();
+            
+            console.log('Firebase initialized successfully');
+        } catch (error) {
+            console.error('Error setting up Firebase:', error);
+            this.showAuthScreen();
+        }
     }
 
     async setupSupabase() {
@@ -42,7 +69,34 @@ class NotesApp {
         }
     }
 
+    setupAuthStateListener() {
+        if (!this.auth) return;
+
+        this.auth.onAuthStateChanged(async (user) => {
+            if (user) {
+                this.currentUser = user;
+                await this.setupSupabase();
+                this.showApp();
+                await this.loadNotes();
+                this.updateUserInfo();
+            } else {
+                this.currentUser = null;
+                this.showAuthScreen();
+            }
+        });
+    }
+
     bindEvents() {
+        // Google Sign-In button
+        document.getElementById('googleSignInBtn').addEventListener('click', () => {
+            this.signInWithGoogle();
+        });
+
+        // Sign Out button
+        document.getElementById('signOutBtn').addEventListener('click', () => {
+            this.signOut();
+        });
+
         // New note button
         document.getElementById('newNoteBtn').addEventListener('click', () => {
             this.createNewNote();
@@ -87,6 +141,51 @@ class NotesApp {
         });
     }
 
+    async signInWithGoogle() {
+        if (!this.auth) {
+            this.showMessage('Firebase not initialized', 'error');
+            return;
+        }
+
+        try {
+            const provider = new this.firebase.auth.GoogleAuthProvider();
+            await this.auth.signInWithPopup(provider);
+        } catch (error) {
+            console.error('Error signing in with Google:', error);
+            this.showMessage('Error signing in. Please try again.', 'error');
+        }
+    }
+
+    async signOut() {
+        if (!this.auth) return;
+
+        try {
+            await this.auth.signOut();
+            this.showMessage('Signed out successfully', 'success');
+        } catch (error) {
+            console.error('Error signing out:', error);
+            this.showMessage('Error signing out', 'error');
+        }
+    }
+
+    showAuthScreen() {
+        document.getElementById('authContainer').style.display = 'flex';
+        document.getElementById('appContainer').style.display = 'none';
+    }
+
+    showApp() {
+        document.getElementById('authContainer').style.display = 'none';
+        document.getElementById('appContainer').style.display = 'flex';
+        this.showWelcomeScreen();
+    }
+
+    updateUserInfo() {
+        if (this.currentUser) {
+            const userName = this.currentUser.displayName || this.currentUser.email;
+            document.getElementById('userName').textContent = userName;
+        }
+    }
+
     async loadNotes() {
         this.showLoading(true);
         
@@ -97,6 +196,7 @@ class NotesApp {
                 const { data, error } = await this.supabase
                     .from('notes')
                     .select('*')
+                    .eq('user_id', this.currentUser.uid)
                     .order('updated_at', { ascending: false });
 
                 if (error) throw error;
@@ -263,6 +363,7 @@ class NotesApp {
         const noteData = {
             title: title || 'Untitled',
             content: content,
+            user_id: this.currentUser.uid,
             updated_at: new Date().toISOString()
         };
 
@@ -278,6 +379,7 @@ class NotesApp {
                         .from('notes')
                         .update(noteData)
                         .eq('id', this.currentNoteId)
+                        .eq('user_id', this.currentUser.uid)
                         .select()
                         .single();
 
@@ -336,7 +438,8 @@ class NotesApp {
                 const { error } = await this.supabase
                     .from('notes')
                     .delete()
-                    .eq('id', this.currentNoteId);
+                    .eq('id', this.currentNoteId)
+                    .eq('user_id', this.currentUser.uid);
 
                 if (error) throw error;
             }
@@ -398,7 +501,7 @@ class NotesApp {
     // Local Storage fallback methods
     loadNotesFromLocalStorage() {
         try {
-            const saved = localStorage.getItem('notes-app-notes');
+            const saved = localStorage.getItem(`notes-app-notes-${this.currentUser.uid}`);
             return saved ? JSON.parse(saved) : [];
         } catch (error) {
             console.error('Error loading notes from localStorage:', error);
@@ -408,7 +511,7 @@ class NotesApp {
 
     saveNotesToLocalStorage() {
         try {
-            localStorage.setItem('notes-app-notes', JSON.stringify(this.notes));
+            localStorage.setItem(`notes-app-notes-${this.currentUser.uid}`, JSON.stringify(this.notes));
         } catch (error) {
             console.error('Error saving notes to localStorage:', error);
         }
@@ -471,6 +574,6 @@ document.head.appendChild(style);
 document.addEventListener('DOMContentLoaded', () => {
     window.notesApp = new NotesApp();
     
-    console.log('📝 Notes App initialized!');
+    console.log('📝 Notes App with Firebase Authentication initialized!');
     console.log('💡 Tip: Use Cmd/Ctrl + N to create a new note, Cmd/Ctrl + S to save');
 });
