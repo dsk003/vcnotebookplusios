@@ -1118,18 +1118,39 @@ class NotesApp {
             if (isImage) {
                 previewContainer.innerHTML = `
                     <div class="image-preview">
-                        <img src="${previewUrl}" alt="${attachment.file_name}" loading="lazy" onerror="this.parentElement.innerHTML='<div class=\\"media-error\\">Failed to load image</div>'" />
+                        <img src="${previewUrl}" alt="${attachment.file_name}" loading="lazy" />
                     </div>
                 `;
+                
+                // Add error handler after creating the element
+                const img = previewContainer.querySelector('img');
+                img.onerror = () => {
+                    previewContainer.innerHTML = '<div class="media-error">Failed to load image</div>';
+                };
             } else if (isVideo) {
                 previewContainer.innerHTML = `
                     <div class="video-preview">
-                        <video controls preload="metadata" onerror="this.parentElement.innerHTML='<div class=\\"media-error\\">Failed to load video</div>'">
+                        <video controls preload="metadata" playsinline webkit-playsinline>
                             <source src="${previewUrl}" type="${attachment.file_type}">
                             Your browser does not support the video tag.
                         </video>
                     </div>
                 `;
+                
+                // Add error handler and load event after creating the element
+                const video = previewContainer.querySelector('video');
+                video.onerror = () => {
+                    this.showDebugMessage(`❌ Debug: Video failed to load: ${attachment.file_name}`);
+                    previewContainer.innerHTML = '<div class="media-error">Failed to load video</div>';
+                };
+                
+                video.onloadeddata = () => {
+                    this.showDebugMessage(`✅ Debug: Video loaded successfully: ${attachment.file_name}`);
+                };
+                
+                video.oncanplay = () => {
+                    this.showDebugMessage(`✅ Debug: Video can play: ${attachment.file_name}`);
+                };
             }
 
             this.showDebugMessage(`✅ Debug: Media preview created for ${attachment.file_name}`);
@@ -1232,6 +1253,9 @@ class NotesApp {
 
     async getFilePreviewUrl(attachment) {
         try {
+            this.showDebugMessage(`🔍 Debug: Creating signed URL for ${attachment.file_name}`);
+            this.showDebugMessage(`🔍 Debug: Bucket: ${attachment.storage_bucket}, Path: ${attachment.storage_path}`);
+            
             // Use signed URLs for all files to ensure access
             const { data, error } = await this.supabaseStorage.storage
                 .from(attachment.storage_bucket)
@@ -1239,11 +1263,12 @@ class NotesApp {
 
             if (error) {
                 this.showDebugMessage(`❌ Debug: Error creating signed URL: ${error.message}`);
-                this.showDebugMessage(`❌ Debug: Bucket: ${attachment.storage_bucket}, Path: ${attachment.storage_path}`);
+                this.showDebugMessage(`❌ Debug: Error details: ${JSON.stringify(error, null, 2)}`);
                 return null;
             }
 
             this.showDebugMessage(`✅ Debug: Created signed URL for ${attachment.file_name}`);
+            this.showDebugMessage(`🔍 Debug: Signed URL: ${data.signedUrl.substring(0, 100)}...`);
             return data.signedUrl;
         } catch (error) {
             this.showDebugMessage(`❌ Debug: Error getting preview URL: ${error.message}`);
