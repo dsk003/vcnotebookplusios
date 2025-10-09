@@ -215,8 +215,31 @@ app.post('/api/payments/webhook', async (req, res) => {
     console.log('Payment webhook received:', webhookData);
 
     // Handle DodoPayments webhook format
-    // Check if this is a subscription webhook
-    if (webhookData.payload_type === 'Subscription' && webhookData.data) {
+    // Check if this is a payment succeeded webhook
+    if (webhookData.type === 'payment.succeeded' && webhookData.data) {
+      const { customer, metadata, subscription_id, status, payment_id } = webhookData.data;
+      
+      console.log(`💳 Payment succeeded webhook received:`);
+      console.log(`Status: ${status}`);
+      console.log(`Customer: ${customer?.email}`);
+      console.log(`User ID: ${metadata?.user_id}`);
+      console.log(`Subscription ID: ${subscription_id}`);
+      console.log(`Payment ID: ${payment_id}`);
+      
+      if (status === 'succeeded') {
+        console.log(`✅ Payment succeeded for user: ${customer?.email}`);
+        
+        // Update user subscription status in database
+        await updateUserSubscriptionStatus(
+          metadata?.user_id, 
+          customer?.email, 
+          true, 
+          subscription_id, 
+          payment_id
+        );
+      }
+      
+    } else if (webhookData.payload_type === 'Subscription' && webhookData.data) {
       const { customer, metadata, subscription_id, status } = webhookData.data;
       
       console.log(`📋 Subscription webhook received:`);
