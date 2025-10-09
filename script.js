@@ -779,8 +779,8 @@ class NotesApp {
                 throw new Error('Checkout URL not received from server');
             }
             
-            // Open DodoPayments checkout in a new tab
-            window.open(checkoutData.checkout_url, '_blank');
+            // Open DodoPayments checkout in the same tab
+            window.location.href = checkoutData.checkout_url;
             
             this.showMessage('Opening secure checkout page...', 'success');
 

@@ -291,6 +291,17 @@ app.post('/api/payments/webhook', async (req, res) => {
 // Function to update user subscription status
 async function updateUserSubscriptionStatus(userId, userEmail, isPremium, subscriptionId = null, paymentId = null) {
   try {
+    console.log('=== UPDATE USER SUBSCRIPTION STATUS ===');
+    console.log('Parameters:', { userId, userEmail, isPremium, subscriptionId, paymentId });
+    
+    // Check environment variables
+    if (!process.env.SUPABASE_URL || !process.env.SUPABASE_SERVICE_ROLE_KEY) {
+      console.error('❌ Missing Supabase environment variables');
+      console.log('SUPABASE_URL:', !!process.env.SUPABASE_URL);
+      console.log('SUPABASE_SERVICE_ROLE_KEY:', !!process.env.SUPABASE_SERVICE_ROLE_KEY);
+      return;
+    }
+
     // Create Supabase client for webhook operations
     const { createClient } = require('@supabase/supabase-js');
     const supabase = createClient(
@@ -302,6 +313,8 @@ async function updateUserSubscriptionStatus(userId, userEmail, isPremium, subscr
       console.error('❌ Supabase client not initialized');
       return;
     }
+
+    console.log('✅ Supabase client created successfully');
 
     const subscriptionData = {
       user_id: userId,
@@ -319,15 +332,25 @@ async function updateUserSubscriptionStatus(userId, userEmail, isPremium, subscr
       subscriptionData.payment_id = paymentId;
     }
 
+    console.log('📝 Subscription data to save:', subscriptionData);
+
     // Try to update existing record first
+    console.log('🔍 Checking for existing user subscription...');
     const { data: existingUser, error: selectError } = await supabase
       .from('user_subscriptions')
       .select('id')
       .eq('user_id', userId)
       .single();
 
+    if (selectError && selectError.code !== 'PGRST116') {
+      console.error('❌ Error checking existing user:', selectError);
+    }
+
+    console.log('🔍 Existing user check result:', { existingUser, selectError });
+
     if (existingUser) {
       // Update existing record
+      console.log('📝 Updating existing user subscription...');
       const { error: updateError } = await supabase
         .from('user_subscriptions')
         .update(subscriptionData)
@@ -340,6 +363,7 @@ async function updateUserSubscriptionStatus(userId, userEmail, isPremium, subscr
       }
     } else {
       // Insert new record
+      console.log('📝 Creating new user subscription...');
       const { error: insertError } = await supabase
         .from('user_subscriptions')
         .insert(subscriptionData);
@@ -353,6 +377,7 @@ async function updateUserSubscriptionStatus(userId, userEmail, isPremium, subscr
 
   } catch (error) {
     console.error('❌ Error in updateUserSubscriptionStatus:', error);
+    console.error('Error stack:', error.stack);
   }
 }
 
