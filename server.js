@@ -88,6 +88,7 @@ app.post('/api/checkout/create', async (req, res) => {
           quantity: 1
         }
       ],
+      return_url: `${req.protocol}://${req.get('host')}/`,
       success_url: `${req.protocol}://${req.get('host')}/payment-success`,
       cancel_url: `${req.protocol}://${req.get('host')}/`,
       metadata: {
