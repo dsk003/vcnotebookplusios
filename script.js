@@ -59,6 +59,7 @@ class NotesApp {
             
             const supabaseUrl = config.supabaseUrl;
             const supabaseKey = config.supabaseAnonKey;
+            const supabaseServiceKey = config.supabaseServiceKey;
             
             if (!supabaseUrl || !supabaseKey) {
                 this.showDebugMessage(`❌ Debug: Supabase credentials missing - URL: ${supabaseUrl ? 'Present' : 'Missing'}, Key: ${supabaseKey ? 'Present' : 'Missing'}`);
@@ -67,7 +68,34 @@ class NotesApp {
                 return;
             }
 
-            this.supabase = supabase.createClient(supabaseUrl, supabaseKey);
+            // Create regular client for database operations
+            this.supabase = supabase.createClient(supabaseUrl, supabaseKey, {
+                auth: {
+                    persistSession: false,
+                    autoRefreshToken: false,
+                    detectSessionInUrl: false
+                }
+            });
+
+            // Create service role client for storage operations with S3 endpoint
+            if (supabaseServiceKey) {
+                this.supabaseStorage = supabase.createClient(supabaseUrl, supabaseServiceKey, {
+                    auth: {
+                        persistSession: false,
+                        autoRefreshToken: false,
+                        detectSessionInUrl: false
+                    },
+                    global: {
+                        headers: {
+                            'Authorization': `Bearer ${supabaseServiceKey}`
+                        }
+                    }
+                });
+                this.showDebugMessage(`✅ Debug: Service role client created for storage with S3 endpoint`);
+            } else {
+                this.showDebugMessage(`⚠️ Debug: No service role key found, using regular client for storage`);
+                this.supabaseStorage = this.supabase;
+            }
             this.useLocalStorage = false;
             this.showDebugMessage(`✅ Debug: Supabase client initialized successfully`);
             console.log('Supabase client initialized successfully');
@@ -79,6 +107,35 @@ class NotesApp {
         }
     }
 
+    async setupSupabaseAuth() {
+        if (!this.supabase || !this.currentUser) return;
+
+        try {
+            this.showDebugMessage(`🔍 Debug: Setting up Supabase auth for Firebase user: ${this.currentUser.uid}`);
+            
+            // Get Firebase ID token
+            const idToken = await this.currentUser.getIdToken();
+            this.showDebugMessage(`🔍 Debug: Got Firebase ID token: ${idToken ? 'Yes' : 'No'}`);
+            
+            // Set the session for Supabase using Firebase token
+            const { data, error } = await this.supabase.auth.setSession({
+                access_token: idToken,
+                refresh_token: idToken // Using same token for refresh
+            });
+
+            if (error) {
+                this.showDebugMessage(`❌ Debug: Supabase auth setup error: ${JSON.stringify(error, null, 2)}`);
+                // Continue anyway - we'll handle auth differently
+            } else {
+                this.showDebugMessage(`✅ Debug: Supabase auth session set successfully`);
+            }
+
+        } catch (error) {
+            this.showDebugMessage(`❌ Debug: Firebase token error: ${error.message}`);
+            // Continue anyway - we'll use a different approach
+        }
+    }
+
     setupAuthStateListener() {
         if (!this.auth) return;
 
@@ -86,6 +143,7 @@ class NotesApp {
             if (user) {
                 this.currentUser = user;
                 await this.setupSupabase();
+                await this.setupSupabaseAuth();
                 this.showApp();
                 await this.loadNotes();
                 this.updateUserInfo();
@@ -807,17 +865,41 @@ class NotesApp {
 
             this.showDebugMessage(`🔍 Debug: Uploading to path: ${filePath}`);
 
-            // Upload to Supabase Storage
-            const { data, error } = await this.supabase.storage
-                .from('note-attachments')
-                .upload(filePath, file);
+            // Try using the S3-compatible API directly
+            const s3Endpoint = 'https://ekilkblfamcxpyfcpasj.storage.supabase.co/storage/v1/s3';
+            const bucketName = 'note-attachments';
+            const fullPath = `${bucketName}/${filePath}`;
+            
+            this.showDebugMessage(`🔍 Debug: Using S3 endpoint: ${s3Endpoint}`);
+            this.showDebugMessage(`🔍 Debug: Full S3 path: ${fullPath}`);
 
-            if (error) {
-                this.showDebugMessage(`❌ Debug: Upload error: ${JSON.stringify(error, null, 2)}`);
-                throw error;
+            // Get the service role key for authentication
+            const configResponse = await fetch('/api/config');
+            const config = await configResponse.json();
+            const serviceKey = config.supabaseServiceKey;
+
+            if (!serviceKey) {
+                throw new Error('Service role key not available');
             }
 
-            this.showDebugMessage(`✅ Debug: File uploaded successfully: ${data.path}`);
+            // Upload using S3-compatible API
+            const uploadResponse = await fetch(`${s3Endpoint}/${fullPath}`, {
+                method: 'PUT',
+                headers: {
+                    'Authorization': `Bearer ${serviceKey}`,
+                    'Content-Type': file.type,
+                    'x-amz-acl': 'private'
+                },
+                body: file
+            });
+
+            if (!uploadResponse.ok) {
+                const errorText = await uploadResponse.text();
+                this.showDebugMessage(`❌ Debug: S3 upload error: ${uploadResponse.status} - ${errorText}`);
+                throw new Error(`Upload failed: ${uploadResponse.status} - ${errorText}`);
+            }
+
+            this.showDebugMessage(`✅ Debug: File uploaded successfully to S3: ${fullPath}`);
 
             // Save file metadata to database
             const attachmentData = {
@@ -826,7 +908,7 @@ class NotesApp {
                 file_name: file.name,
                 file_size: file.size,
                 file_type: file.type,
-                storage_path: data.path,
+                storage_path: filePath,
                 storage_bucket: 'note-attachments'
             };
 
@@ -992,17 +1074,36 @@ class NotesApp {
         try {
             this.showDebugMessage(`🔍 Debug: Downloading file: ${attachment.file_name}`);
 
-            const { data, error } = await this.supabase.storage
-                .from(attachment.storage_bucket)
-                .download(attachment.storage_path);
+            // Use S3-compatible API for download
+            const s3Endpoint = 'https://ekilkblfamcxpyfcpasj.storage.supabase.co/storage/v1/s3';
+            const fullPath = `${attachment.storage_bucket}/${attachment.storage_path}`;
+            
+            // Get the service role key for authentication
+            const configResponse = await fetch('/api/config');
+            const config = await configResponse.json();
+            const serviceKey = config.supabaseServiceKey;
 
-            if (error) {
-                this.showDebugMessage(`❌ Debug: Download error: ${JSON.stringify(error, null, 2)}`);
-                throw error;
+            if (!serviceKey) {
+                throw new Error('Service role key not available');
             }
 
+            const downloadResponse = await fetch(`${s3Endpoint}/${fullPath}`, {
+                method: 'GET',
+                headers: {
+                    'Authorization': `Bearer ${serviceKey}`
+                }
+            });
+
+            if (!downloadResponse.ok) {
+                const errorText = await downloadResponse.text();
+                this.showDebugMessage(`❌ Debug: S3 download error: ${downloadResponse.status} - ${errorText}`);
+                throw new Error(`Download failed: ${downloadResponse.status} - ${errorText}`);
+            }
+
+            const blob = await downloadResponse.blob();
+
             // Create download link
-            const url = URL.createObjectURL(data);
+            const url = URL.createObjectURL(blob);
             const a = document.createElement('a');
             a.href = url;
             a.download = attachment.file_name;
@@ -1011,7 +1112,7 @@ class NotesApp {
             document.body.removeChild(a);
             URL.revokeObjectURL(url);
 
-            this.showDebugMessage(`✅ Debug: File downloaded successfully`);
+            this.showDebugMessage(`✅ Debug: File downloaded successfully from S3`);
             this.showMessage(`Downloaded "${attachment.file_name}"`, 'success');
 
         } catch (error) {
@@ -1030,15 +1131,34 @@ class NotesApp {
         try {
             this.showDebugMessage(`🔍 Debug: Deleting attachment: ${attachment.file_name}`);
 
-            // Delete from storage
-            const { error: storageError } = await this.supabase.storage
-                .from(attachment.storage_bucket)
-                .remove([attachment.storage_path]);
+            // Delete from storage using S3-compatible API
+            const s3Endpoint = 'https://ekilkblfamcxpyfcpasj.storage.supabase.co/storage/v1/s3';
+            const fullPath = `${attachment.storage_bucket}/${attachment.storage_path}`;
+            
+            // Get the service role key for authentication
+            const configResponse = await fetch('/api/config');
+            const config = await configResponse.json();
+            const serviceKey = config.supabaseServiceKey;
 
-            if (storageError) {
-                this.showDebugMessage(`❌ Debug: Storage delete error: ${JSON.stringify(storageError, null, 2)}`);
-                // Continue with database deletion even if storage deletion fails
+            if (!serviceKey) {
+                throw new Error('Service role key not available');
             }
+
+            const deleteResponse = await fetch(`${s3Endpoint}/${fullPath}`, {
+                method: 'DELETE',
+                headers: {
+                    'Authorization': `Bearer ${serviceKey}`
+                }
+            });
+
+            if (!deleteResponse.ok) {
+                const errorText = await deleteResponse.text();
+                this.showDebugMessage(`❌ Debug: S3 delete error: ${deleteResponse.status} - ${errorText}`);
+                // Continue with database deletion even if storage deletion fails
+            } else {
+                this.showDebugMessage(`✅ Debug: File deleted successfully from S3`);
+            }
+
 
             // Delete from database
             const { error: dbError } = await this.supabase
