@@ -188,7 +188,7 @@ class NotesApp {
 
         // Buy Premium button
         document.getElementById('buyPremiumBtn').addEventListener('click', () => {
-            this.showMessage('Premium upgrade coming soon!', 'info');
+            this.handleBuyPremium();
         });
 
         // Search functionality
@@ -741,6 +741,54 @@ class NotesApp {
         }, 3000);
     }
 
+    async handleBuyPremium() {
+        if (!this.currentUser) {
+            this.showMessage('Please sign in to upgrade to premium', 'error');
+            return;
+        }
+
+        try {
+            this.showMessage('Creating payment link...', 'info');
+            this.showDebugMessage(`🔍 Debug: Creating payment for user: ${this.currentUser.email}`);
+
+            const response = await fetch('/api/payments/create', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    userEmail: this.currentUser.email,
+                    userId: this.currentUser.uid
+                })
+            });
+
+            if (!response.ok) {
+                const errorData = await response.json();
+                this.showDebugMessage(`❌ Debug: Server error response: ${JSON.stringify(errorData, null, 2)}`);
+                throw new Error(errorData.error || `Server error: ${response.status}`);
+            }
+
+            const paymentData = await response.json();
+            
+            this.showDebugMessage(`✅ Debug: Payment link created: ${paymentData.payment_url}`);
+            
+            // Check if payment_url exists in response
+            if (!paymentData.payment_url) {
+                this.showDebugMessage(`❌ Debug: No payment_url in response: ${JSON.stringify(paymentData, null, 2)}`);
+                throw new Error('Payment URL not received from server');
+            }
+            
+            // Open Dodo Payments checkout in a new tab
+            window.open(paymentData.payment_url, '_blank');
+            
+            this.showMessage('Opening secure payment page...', 'success');
+
+        } catch (error) {
+            console.error('Payment creation error:', error);
+            this.showDebugMessage(`❌ Debug: Payment creation failed: ${error.message}`);
+            this.showMessage(`Payment error: ${error.message}`, 'error');
+        }
+    }
 
     showDebugMessage(message) {
         // Create debug console area if it doesn't exist
