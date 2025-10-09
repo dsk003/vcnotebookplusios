@@ -186,6 +186,11 @@ class NotesApp {
             this.handleFileUpload(e.target.files);
         });
 
+        // Buy Premium button
+        document.getElementById('buyPremiumBtn').addEventListener('click', () => {
+            this.handleBuyPremium();
+        });
+
         // Search functionality
         const searchInput = document.getElementById('searchInput');
         const clearSearchBtn = document.getElementById('clearSearchBtn');
@@ -734,6 +739,18 @@ class NotesApp {
                 }
             }, 300);
         }, 3000);
+    }
+
+    handleBuyPremium() {
+        // Show premium upgrade modal or redirect to payment page
+        this.showMessage('🚀 Premium upgrade coming soon! Stay tuned for amazing features!', 'success');
+        
+        // You can replace this with actual payment integration
+        // For example: window.open('https://your-payment-page.com', '_blank');
+        
+        // Log the premium upgrade attempt
+        console.log('Premium upgrade requested by user:', this.currentUser?.email);
+        this.showDebugMessage(`🔍 Debug: Premium upgrade requested by ${this.currentUser?.email || 'unknown user'}`);
     }
 
     showDebugMessage(message) {

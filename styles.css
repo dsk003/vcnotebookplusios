@@ -731,6 +731,120 @@ body {
     color: white;
 }
 
+/* Premium Header Styles */
+.premium-header {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    padding: 12px 20px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+    position: sticky;
+    top: 0;
+    z-index: 100;
+    backdrop-filter: blur(10px);
+}
+
+.premium-content {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    max-width: 1200px;
+    margin: 0 auto;
+    gap: 20px;
+}
+
+.premium-text {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex: 1;
+}
+
+.premium-icon {
+    font-size: 20px;
+    filter: drop-shadow(0 0 4px rgba(255, 255, 255, 0.3));
+}
+
+.premium-message {
+    font-size: 16px;
+    font-weight: 600;
+    color: white;
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
+}
+
+.premium-description {
+    font-size: 14px;
+    color: rgba(255, 255, 255, 0.8);
+    margin-left: 8px;
+}
+
+.premium-button {
+    background: linear-gradient(135deg, #ff6b6b 0%, #ee5a24 100%);
+    border: none;
+    border-radius: 25px;
+    padding: 10px 20px;
+    color: white;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    transition: all 0.3s ease;
+    box-shadow: 0 4px 15px rgba(255, 107, 107, 0.3);
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
+}
+
+.premium-button:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 20px rgba(255, 107, 107, 0.4);
+    background: linear-gradient(135deg, #ff5252 0%, #d63031 100%);
+}
+
+.premium-button:active {
+    transform: translateY(0);
+    box-shadow: 0 2px 10px rgba(255, 107, 107, 0.3);
+}
+
+.premium-button-text {
+    font-weight: 600;
+}
+
+.premium-button-icon {
+    font-size: 16px;
+    transition: transform 0.3s ease;
+}
+
+.premium-button:hover .premium-button-icon {
+    transform: translateX(2px);
+}
+
+/* Responsive Premium Header */
+@media (max-width: 768px) {
+    .premium-header {
+        padding: 10px 15px;
+    }
+    
+    .premium-content {
+        flex-direction: column;
+        gap: 12px;
+        text-align: center;
+    }
+    
+    .premium-text {
+        flex-direction: column;
+        gap: 8px;
+    }
+    
+    .premium-description {
+        margin-left: 0;
+        font-size: 13px;
+    }
+    
+    .premium-button {
+        padding: 12px 24px;
+        font-size: 15px;
+    }
+}
+
 /* Media Preview Styles */
 .media-preview {
     margin-top: 12px;
