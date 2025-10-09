@@ -13,6 +13,7 @@ class NotesApp {
         this.useLocalStorage = false;
         this.searchTerm = '';
         this.fileAttachments = [];
+        this.tempFileAttachments = []; // Store files for unsaved notes
         
         this.init();
     }
@@ -514,13 +515,14 @@ class NotesApp {
         document.getElementById('noteContent').value = '';
         document.getElementById('saveNoteBtn').style.display = 'block';
         document.getElementById('deleteNoteBtn').style.display = 'none';
-        document.getElementById('uploadFileBtn').style.display = 'none'; // Hide upload button until note is saved
+        document.getElementById('uploadFileBtn').style.display = 'block'; // Show upload button for new notes
         this.hasUnsavedChanges = false;
         this.updateSaveButtonState();
         document.getElementById('noteTitle').focus();
         
         // Clear file attachments for new note
         this.fileAttachments = [];
+        this.tempFileAttachments = [];
         this.renderFileAttachments();
     }
 
@@ -624,6 +626,9 @@ class NotesApp {
                 this.currentNoteId = savedNote.id;
                 // Show upload button now that we have a note ID
                 document.getElementById('uploadFileBtn').style.display = 'block';
+                
+                // Associate temporary files with the newly saved note
+                await this.associateTempFilesWithNote(savedNote.id);
             }
 
             // Update local notes array
@@ -848,12 +853,6 @@ class NotesApp {
         this.showDebugMessage(`🔍 Debug: Uploading file: ${file.name} (${this.formatFileSize(file.size)})`);
         
         try {
-            // Check if a note is selected
-            if (!this.currentNoteId) {
-                this.showMessage('Please select or create a note before uploading files.', 'error');
-                return;
-            }
-
             // Validate file size (50MB limit)
             const maxSize = 50 * 1024 * 1024; // 50MB
             if (file.size > maxSize) {
@@ -884,34 +883,53 @@ class NotesApp {
 
             this.showDebugMessage(`✅ Debug: File uploaded successfully: ${data.path}`);
 
-            // Save file metadata to database
-            const attachmentData = {
-                note_id: this.currentNoteId,
-                user_id: this.currentUser.uid,
-                file_name: file.name,
-                file_size: file.size,
-                file_type: file.type,
-                storage_path: filePath,
-                storage_bucket: 'note-attachments'
-            };
+            if (this.currentNoteId) {
+                // Note is saved - save file metadata to database
+                const attachmentData = {
+                    note_id: this.currentNoteId,
+                    user_id: this.currentUser.uid,
+                    file_name: file.name,
+                    file_size: file.size,
+                    file_type: file.type,
+                    storage_path: data.path,
+                    storage_bucket: 'note-attachments'
+                };
 
-            const { data: attachment, error: dbError } = await this.supabase
-                .from('file_attachments')
-                .insert([attachmentData])
-                .select()
-                .single();
+                const { data: attachment, error: dbError } = await this.supabase
+                    .from('file_attachments')
+                    .insert([attachmentData])
+                    .select()
+                    .single();
 
-            if (dbError) {
-                this.showDebugMessage(`❌ Debug: Database error: ${JSON.stringify(dbError, null, 2)}`);
-                throw dbError;
+                if (dbError) {
+                    this.showDebugMessage(`❌ Debug: Database error: ${JSON.stringify(dbError, null, 2)}`);
+                    throw dbError;
+                }
+
+                this.showDebugMessage(`✅ Debug: File attachment saved to database`);
+
+                // Add to local attachments array
+                this.fileAttachments.push(attachment);
+            } else {
+                // Note is not saved yet - store temporarily
+                const tempAttachment = {
+                    id: `temp-${Date.now()}-${Math.random().toString(36).substring(2)}`,
+                    note_id: null,
+                    user_id: this.currentUser.uid,
+                    file_name: file.name,
+                    file_size: file.size,
+                    file_type: file.type,
+                    storage_path: data.path,
+                    storage_bucket: 'note-attachments',
+                    created_at: new Date().toISOString(),
+                    is_temp: true
+                };
+
+                this.tempFileAttachments.push(tempAttachment);
+                this.showDebugMessage(`✅ Debug: File stored temporarily for unsaved note`);
             }
 
-            this.showDebugMessage(`✅ Debug: File attachment saved to database`);
-
-            // Add to local attachments array
-            this.fileAttachments.push(attachment);
             this.renderFileAttachments();
-            
             this.showMessage(`File "${file.name}" uploaded successfully!`, 'success');
 
         } catch (error) {
@@ -921,9 +939,52 @@ class NotesApp {
         }
     }
 
+    async associateTempFilesWithNote(noteId) {
+        if (this.tempFileAttachments.length === 0) {
+            return;
+        }
+
+        this.showDebugMessage(`🔍 Debug: Associating ${this.tempFileAttachments.length} temporary files with note ${noteId}`);
+
+        try {
+            // Save temporary files to database
+            const attachmentData = this.tempFileAttachments.map(tempFile => ({
+                note_id: noteId,
+                user_id: this.currentUser.uid,
+                file_name: tempFile.file_name,
+                file_size: tempFile.file_size,
+                file_type: tempFile.file_type,
+                storage_path: tempFile.storage_path,
+                storage_bucket: tempFile.storage_bucket
+            }));
+
+            const { data: attachments, error } = await this.supabase
+                .from('file_attachments')
+                .insert(attachmentData)
+                .select();
+
+            if (error) {
+                this.showDebugMessage(`❌ Debug: Error associating temp files: ${JSON.stringify(error, null, 2)}`);
+                throw error;
+            }
+
+            // Move temporary files to regular attachments
+            this.fileAttachments.push(...attachments);
+            this.tempFileAttachments = [];
+            
+            this.showDebugMessage(`✅ Debug: Successfully associated ${attachments.length} files with note`);
+            this.renderFileAttachments();
+
+        } catch (error) {
+            console.error('Error associating temporary files:', error);
+            this.showDebugMessage(`❌ Debug: Failed to associate temp files: ${error.message}`);
+        }
+    }
+
     async loadFileAttachments() {
         if (!this.currentNoteId) {
             this.fileAttachments = [];
+            this.tempFileAttachments = [];
             this.renderFileAttachments();
             return;
         }
@@ -951,6 +1012,7 @@ class NotesApp {
             console.error('Error loading file attachments:', error);
             this.showDebugMessage(`❌ Debug: Failed to load attachments: ${error.message}`);
             this.fileAttachments = [];
+            this.tempFileAttachments = [];
             this.renderFileAttachments();
         }
     }
@@ -959,13 +1021,16 @@ class NotesApp {
         const attachmentsList = document.getElementById('attachmentsList');
         const fileAttachments = document.getElementById('fileAttachments');
 
-        if (this.fileAttachments.length === 0) {
+        // Combine saved and temporary attachments
+        const allAttachments = [...this.fileAttachments, ...this.tempFileAttachments];
+
+        if (allAttachments.length === 0) {
             fileAttachments.style.display = 'none';
             return;
         }
 
         fileAttachments.style.display = 'block';
-        attachmentsList.innerHTML = this.fileAttachments.map(attachment => 
+        attachmentsList.innerHTML = allAttachments.map(attachment => 
             this.createAttachmentHTML(attachment)
         ).join('');
 
@@ -1051,7 +1116,7 @@ class NotesApp {
     }
 
     async downloadAttachment(attachmentId) {
-        const attachment = this.fileAttachments.find(a => a.id === attachmentId);
+        const attachment = [...this.fileAttachments, ...this.tempFileAttachments].find(a => a.id === attachmentId);
         if (!attachment) return;
 
         try {
@@ -1090,7 +1155,7 @@ class NotesApp {
     }
 
     async deleteAttachment(attachmentId) {
-        const attachment = this.fileAttachments.find(a => a.id === attachmentId);
+        const attachment = [...this.fileAttachments, ...this.tempFileAttachments].find(a => a.id === attachmentId);
         if (!attachment) return;
 
         if (!confirm(`Are you sure you want to delete "${attachment.file_name}"?`)) return;
@@ -1111,23 +1176,29 @@ class NotesApp {
             }
 
 
-            // Delete from database
-            const { error: dbError } = await this.supabase
-                .from('file_attachments')
-                .delete()
-                .eq('id', attachmentId)
-                .eq('user_id', this.currentUser.uid);
+            if (attachment.is_temp) {
+                // Remove from temporary files
+                this.tempFileAttachments = this.tempFileAttachments.filter(a => a.id !== attachmentId);
+                this.showDebugMessage(`✅ Debug: Temporary file removed successfully`);
+            } else {
+                // Delete from database
+                const { error: dbError } = await this.supabase
+                    .from('file_attachments')
+                    .delete()
+                    .eq('id', attachmentId)
+                    .eq('user_id', this.currentUser.uid);
 
-            if (dbError) {
-                this.showDebugMessage(`❌ Debug: Database delete error: ${JSON.stringify(dbError, null, 2)}`);
-                throw dbError;
+                if (dbError) {
+                    this.showDebugMessage(`❌ Debug: Database delete error: ${JSON.stringify(dbError, null, 2)}`);
+                    throw dbError;
+                }
+
+                // Remove from local array
+                this.fileAttachments = this.fileAttachments.filter(a => a.id !== attachmentId);
+                this.showDebugMessage(`✅ Debug: File attachment deleted from database successfully`);
             }
 
-            // Remove from local array
-            this.fileAttachments = this.fileAttachments.filter(a => a.id !== attachmentId);
             this.renderFileAttachments();
-
-            this.showDebugMessage(`✅ Debug: Attachment deleted successfully`);
             this.showMessage(`Deleted "${attachment.file_name}"`, 'success');
 
         } catch (error) {
