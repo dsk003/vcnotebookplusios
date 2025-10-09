@@ -100,12 +100,12 @@ app.post('/api/payments/create', async (req, res) => {
       }
     };
 
-    console.log('📤 Sending payment data to DodoPayments API:');
+    console.log('📤 Sending payment data to DodoPayments Checkout API:');
     console.log('Payment data:', JSON.stringify(paymentData, null, 2));
-    console.log('API URL: https://api.dodopayments.com/v1/payments');
+    console.log('API URL: https://test.dodopayments.com/checkouts');
     console.log('API Key (first 10 chars):', process.env.DODO_PAYMENTS_API_KEY?.substring(0, 10) + '...');
 
-    const response = await fetch('https://api.dodopayments.com/v1/payments', {
+    const response = await fetch('https://test.dodopayments.com/checkouts', {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${process.env.DODO_PAYMENTS_API_KEY}`,
@@ -121,26 +121,27 @@ app.post('/api/payments/create', async (req, res) => {
 
     if (!response.ok) {
       const errorData = await response.text();
-      console.error('❌ DodoPayments API error:');
+      console.error('❌ DodoPayments Checkout API error:');
       console.error('Status:', response.status);
       console.error('Status Text:', response.statusText);
       console.error('Error Response:', errorData);
       
       return res.status(500).json({ 
-        error: 'Failed to create payment',
+        error: 'Failed to create checkout',
         details: errorData,
         status: response.status,
         statusText: response.statusText
       });
     }
 
-    const paymentResponse = await response.json();
-    console.log('✅ Payment created successfully:');
-    console.log('Payment Response:', JSON.stringify(paymentResponse, null, 2));
+    const checkoutResponse = await response.json();
+    console.log('✅ Checkout created successfully:');
+    console.log('Checkout Response:', JSON.stringify(checkoutResponse, null, 2));
     
+    // The checkout API might return different field names
     res.json({
-      payment_id: paymentResponse.payment_id,
-      payment_url: paymentResponse.payment_url
+      payment_id: checkoutResponse.payment_id || checkoutResponse.id,
+      payment_url: checkoutResponse.payment_url || checkoutResponse.checkout_url || checkoutResponse.url
     });
 
   } catch (error) {
