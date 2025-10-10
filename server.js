@@ -1,3 +1,6 @@
+// Load environment variables from .env file
+require('dotenv').config();
+
 const express = require('express');
 const path = require('path');
 
@@ -33,6 +36,14 @@ app.get('/api/firebase-config', (_req, res) => {
     storageBucket: process.env.FIREBASE_STORAGE_BUCKET,
     messagingSenderId: process.env.FIREBASE_MESSAGING_SENDER_ID,
     appId: process.env.FIREBASE_APP_ID
+  });
+});
+
+// Serve Google Analytics configuration
+app.get('/api/ga-config', (_req, res) => {
+  res.json({
+    measurementId: process.env.GA_MEASUREMENT_ID || null,
+    enabled: !!process.env.GA_MEASUREMENT_ID
   });
 });
 

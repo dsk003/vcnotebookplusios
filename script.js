@@ -18,6 +18,51 @@ class NotesApp {
         this.init();
     }
 
+    // Google Analytics tracking methods
+    trackEvent(eventName, parameters = {}) {
+        if (typeof gtag !== 'undefined' && window.gtag) {
+            gtag('event', eventName, parameters);
+        } else {
+            console.log('GA Event (not tracked):', eventName, parameters);
+        }
+    }
+
+    trackPageView(pageName) {
+        if (typeof gtag !== 'undefined' && window.gtag) {
+            // Get the measurement ID from the server config
+            this.getGAMeasurementId().then(measurementId => {
+                if (measurementId) {
+                    gtag('config', measurementId, {
+                        page_title: pageName,
+                        page_location: window.location.href
+                    });
+                }
+            });
+        } else {
+            console.log('GA Page View (not tracked):', pageName);
+        }
+    }
+
+    trackUserAction(action, category = 'User Interaction', label = '') {
+        this.trackEvent(action, {
+            event_category: category,
+            event_label: label,
+            value: 1
+        });
+    }
+
+    // Helper method to get GA measurement ID
+    async getGAMeasurementId() {
+        try {
+            const response = await fetch('/api/ga-config');
+            const config = await response.json();
+            return config.measurementId;
+        } catch (error) {
+            console.error('Error fetching GA config:', error);
+            return null;
+        }
+    }
+
     async init() {
         await this.setupFirebase();
         this.bindEvents();
@@ -179,6 +224,7 @@ class NotesApp {
 
         // Upload file button
         document.getElementById('uploadFileBtn').addEventListener('click', () => {
+            this.trackUserAction('file_upload_initiated', 'File Upload', 'Button Click');
             document.getElementById('fileInput').click();
         });
 
@@ -189,6 +235,7 @@ class NotesApp {
 
         // Buy Premium button
         document.getElementById('buyPremiumBtn').addEventListener('click', () => {
+            this.trackUserAction('premium_upgrade_clicked', 'Premium', 'Upgrade Button');
             this.handleUpgradeToPremium();
         });
 
@@ -198,11 +245,15 @@ class NotesApp {
 
         searchInput.addEventListener('input', (e) => {
             this.searchTerm = e.target.value.trim();
+            if (this.searchTerm) {
+                this.trackUserAction('search_performed', 'Search', this.searchTerm);
+            }
             this.performSearch();
             clearSearchBtn.style.display = this.searchTerm ? 'flex' : 'none';
         });
 
         clearSearchBtn.addEventListener('click', () => {
+            this.trackUserAction('search_cleared', 'Search', 'Clear');
             searchInput.value = '';
             this.searchTerm = '';
             this.performSearch();
@@ -245,10 +296,13 @@ class NotesApp {
         }
 
         try {
+            this.trackUserAction('sign_in_attempt', 'Authentication', 'Google');
             const provider = new this.firebase.auth.GoogleAuthProvider();
             await this.auth.signInWithPopup(provider);
+            this.trackUserAction('sign_in_success', 'Authentication', 'Google');
         } catch (error) {
             console.error('Error signing in with Google:', error);
+            this.trackUserAction('sign_in_error', 'Authentication', 'Google');
             this.showMessage('Error signing in. Please try again.', 'error');
         }
     }
@@ -257,10 +311,13 @@ class NotesApp {
         if (!this.auth) return;
 
         try {
+            this.trackUserAction('sign_out_attempt', 'Authentication', 'Google');
             await this.auth.signOut();
+            this.trackUserAction('sign_out_success', 'Authentication', 'Google');
             this.showMessage('Signed out successfully', 'success');
         } catch (error) {
             console.error('Error signing out:', error);
+            this.trackUserAction('sign_out_error', 'Authentication', 'Google');
             this.showMessage('Error signing out', 'error');
         }
     }
@@ -274,6 +331,10 @@ class NotesApp {
         document.getElementById('authContainer').style.display = 'none';
         document.getElementById('appContainer').style.display = 'flex';
         this.showWelcomeScreen();
+        
+        // Track app access
+        this.trackUserAction('app_accessed', 'App', 'Main Interface');
+        this.trackPageView('Notes App - Main Interface');
     }
 
     updateUserInfo() {
@@ -518,6 +579,7 @@ class NotesApp {
     }
 
     createNewNote() {
+        this.trackUserAction('note_created', 'Notes', 'New Note');
         this.currentNoteId = null;
         this.showNoteEditor();
         document.getElementById('noteTitle').value = '';
@@ -558,6 +620,9 @@ class NotesApp {
         const content = document.getElementById('noteContent').value.trim();
 
         if (!title && !content) return;
+
+        // Track save attempt
+        this.trackUserAction('note_save_attempt', 'Notes', this.currentNoteId ? 'Update' : 'Create');
 
         const noteData = {
             title: title || 'Untitled',
@@ -661,11 +726,17 @@ class NotesApp {
             this.updateSaveButtonState();
             this.showMessage('Note saved successfully!', 'success');
             this.showDebugMessage(`✅ Debug: Save process completed successfully`);
+            
+            // Track successful save
+            this.trackUserAction('note_save_success', 'Notes', this.currentNoteId ? 'Update' : 'Create');
 
         } catch (error) {
             console.error('Error saving note:', error);
             this.showDebugMessage(`❌ Debug: Save failed with error: ${error.message || JSON.stringify(error, null, 2)}`);
             this.showMessage(`Error saving note: ${error.message}`, 'error');
+            
+            // Track save error
+            this.trackUserAction('note_save_error', 'Notes', this.currentNoteId ? 'Update' : 'Create');
         }
     }
 
@@ -673,6 +744,9 @@ class NotesApp {
         if (!this.currentNoteId) return;
 
         if (!confirm('Are you sure you want to delete this note?')) return;
+
+        // Track delete attempt
+        this.trackUserAction('note_delete_attempt', 'Notes', 'Delete');
 
         try {
             if (this.useLocalStorage) {
@@ -700,10 +774,16 @@ class NotesApp {
             
             this.showWelcomeScreen();
             this.showMessage('Note deleted', 'success');
+            
+            // Track successful delete
+            this.trackUserAction('note_delete_success', 'Notes', 'Delete');
 
         } catch (error) {
             console.error('Error deleting note:', error);
             this.showMessage('Error deleting note', 'error');
+            
+            // Track delete error
+            this.trackUserAction('note_delete_error', 'Notes', 'Delete');
         }
     }
 
@@ -939,6 +1019,7 @@ class NotesApp {
     async handleFileUpload(files) {
         if (!files || files.length === 0) return;
         
+        this.trackUserAction('file_upload_started', 'File Upload', `${files.length} files`);
         this.showDebugMessage(`🔍 Debug: Starting file upload for ${files.length} file(s)`);
         
         for (const file of files) {

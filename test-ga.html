@@ -1,0 +1,322 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Google Analytics Test</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            line-height: 1.6;
+        }
+        .test-section {
+            background: #f5f5f5;
+            padding: 20px;
+            margin: 20px 0;
+            border-radius: 8px;
+        }
+        button {
+            background: #007cba;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 4px;
+            cursor: pointer;
+            margin: 5px;
+        }
+        button:hover {
+            background: #005a87;
+        }
+        .status {
+            padding: 10px;
+            margin: 10px 0;
+            border-radius: 4px;
+        }
+        .success {
+            background: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+        .error {
+            background: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+        .info {
+            background: #d1ecf1;
+            color: #0c5460;
+            border: 1px solid #bee5eb;
+        }
+    </style>
+    
+    <!-- Google Analytics - Loaded dynamically from server config -->
+    <script>
+        // Initialize Google Analytics dynamically
+        async function initGoogleAnalytics() {
+            try {
+                const response = await fetch('/api/ga-config');
+                const config = await response.json();
+                
+                if (config.enabled && config.measurementId) {
+                    // Load gtag script
+                    const script = document.createElement('script');
+                    script.async = true;
+                    script.src = `https://www.googletagmanager.com/gtag/js?id=${config.measurementId}`;
+                    document.head.appendChild(script);
+                    
+                    // Initialize gtag
+                    window.dataLayer = window.dataLayer || [];
+                    function gtag(){dataLayer.push(arguments);}
+                    window.gtag = gtag;
+                    gtag('js', new Date());
+                    gtag('config', config.measurementId);
+                    
+                    console.log('Google Analytics initialized with ID:', config.measurementId);
+                } else {
+                    console.log('Google Analytics disabled or not configured');
+                }
+            } catch (error) {
+                console.error('Error loading Google Analytics configuration:', error);
+            }
+        }
+        
+        // Initialize GA when DOM is ready
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', initGoogleAnalytics);
+        } else {
+            initGoogleAnalytics();
+        }
+    </script>
+</head>
+<body>
+    <h1>Google Analytics Implementation Test</h1>
+    
+    <div class="test-section">
+        <h2>Configuration Check</h2>
+        <div id="configStatus" class="status info">Checking configuration...</div>
+        <button onclick="checkConfig()">Check Configuration</button>
+    </div>
+    
+    <div class="test-section">
+        <h2>Event Tracking Test</h2>
+        <div id="eventStatus" class="status info">Ready to test events</div>
+        <button onclick="testEvent()">Send Test Event</button>
+        <button onclick="testPageView()">Send Page View</button>
+        <button onclick="testUserAction()">Send User Action</button>
+    </div>
+    
+    <div class="test-section">
+        <h2>Notes App Events Test</h2>
+        <div id="notesStatus" class="status info">Ready to test Notes App events</div>
+        <button onclick="testSignIn()">Test Sign In</button>
+        <button onclick="testNoteCreate()">Test Note Creation</button>
+        <button onclick="testSearch()">Test Search</button>
+        <button onclick="testFileUpload()">Test File Upload</button>
+    </div>
+    
+    <div class="test-section">
+        <h2>Instructions</h2>
+        <ol>
+            <li>Set the <code>GA_MEASUREMENT_ID</code> environment variable with your Google Analytics Measurement ID (e.g., <code>G-XXXXXXXXXX</code>)</li>
+            <li>Restart your server to load the new environment variable</li>
+            <li>Open your browser's Developer Tools (F12) and go to the Console tab</li>
+            <li>Click the test buttons above</li>
+            <li>Check the console for any errors</li>
+            <li>Go to Google Analytics > Reports > Realtime to see if events are being tracked</li>
+        </ol>
+        
+        <h3>Environment Variable Setup</h3>
+        <p>Add this to your environment variables:</p>
+        <pre><code>GA_MEASUREMENT_ID=G-XXXXXXXXXX</code></pre>
+        
+        <p>For local development, create a <code>.env</code> file in your project root:</p>
+        <pre><code>GA_MEASUREMENT_ID=G-XXXXXXXXXX</code></pre>
+    </div>
+
+    <script>
+        async function checkConfig() {
+            const statusDiv = document.getElementById('configStatus');
+            
+            try {
+                // Fetch configuration from server
+                const response = await fetch('/api/ga-config');
+                const config = await response.json();
+                
+                if (config.enabled && config.measurementId) {
+                    // Check if gtag is available
+                    if (typeof gtag === 'undefined' || !window.gtag) {
+                        statusDiv.className = 'status error';
+                        statusDiv.textContent = 'Error: gtag function not found. Check if Google Analytics script is loading correctly.';
+                        return;
+                    }
+                    
+                    // Check if dataLayer exists
+                    if (typeof window.dataLayer === 'undefined') {
+                        statusDiv.className = 'status error';
+                        statusDiv.textContent = 'Error: dataLayer not found.';
+                        return;
+                    }
+                    
+                    statusDiv.className = 'status success';
+                    statusDiv.textContent = `Configuration loaded successfully. Measurement ID: ${config.measurementId}`;
+                } else {
+                    statusDiv.className = 'status info';
+                    statusDiv.textContent = 'Google Analytics is disabled or not configured. Set GA_MEASUREMENT_ID environment variable to enable.';
+                }
+                
+            } catch (error) {
+                statusDiv.className = 'status error';
+                statusDiv.textContent = `Error: ${error.message}`;
+            }
+        }
+        
+        function testEvent() {
+            const statusDiv = document.getElementById('eventStatus');
+            
+            try {
+                gtag('event', 'test_event', {
+                    event_category: 'Test',
+                    event_label: 'Manual Test',
+                    value: 1
+                });
+                
+                statusDiv.className = 'status success';
+                statusDiv.textContent = 'Test event sent successfully!';
+                
+            } catch (error) {
+                statusDiv.className = 'status error';
+                statusDiv.textContent = `Error sending event: ${error.message}`;
+            }
+        }
+        
+        async function testPageView() {
+            const statusDiv = document.getElementById('eventStatus');
+            
+            try {
+                const response = await fetch('/api/ga-config');
+                const config = await response.json();
+                
+                if (config.enabled && config.measurementId && window.gtag) {
+                    gtag('config', config.measurementId, {
+                        page_title: 'Test Page View',
+                        page_location: window.location.href
+                    });
+                    
+                    statusDiv.className = 'status success';
+                    statusDiv.textContent = 'Test page view sent successfully!';
+                } else {
+                    statusDiv.className = 'status error';
+                    statusDiv.textContent = 'Google Analytics not configured or gtag not available';
+                }
+                
+            } catch (error) {
+                statusDiv.className = 'status error';
+                statusDiv.textContent = `Error sending page view: ${error.message}`;
+            }
+        }
+        
+        function testUserAction() {
+            const statusDiv = document.getElementById('eventStatus');
+            
+            try {
+                gtag('event', 'test_user_action', {
+                    event_category: 'User Interaction',
+                    event_label: 'Test Action',
+                    value: 1
+                });
+                
+                statusDiv.className = 'status success';
+                statusDiv.textContent = 'Test user action sent successfully!';
+                
+            } catch (error) {
+                statusDiv.className = 'status error';
+                statusDiv.textContent = `Error sending user action: ${error.message}`;
+            }
+        }
+        
+        function testSignIn() {
+            const statusDiv = document.getElementById('notesStatus');
+            
+            try {
+                gtag('event', 'sign_in_attempt', {
+                    event_category: 'Authentication',
+                    event_label: 'Google',
+                    value: 1
+                });
+                
+                statusDiv.className = 'status success';
+                statusDiv.textContent = 'Sign in test event sent successfully!';
+                
+            } catch (error) {
+                statusDiv.className = 'status error';
+                statusDiv.textContent = `Error sending sign in event: ${error.message}`;
+            }
+        }
+        
+        function testNoteCreate() {
+            const statusDiv = document.getElementById('notesStatus');
+            
+            try {
+                gtag('event', 'note_created', {
+                    event_category: 'Notes',
+                    event_label: 'New Note',
+                    value: 1
+                });
+                
+                statusDiv.className = 'status success';
+                statusDiv.textContent = 'Note creation test event sent successfully!';
+                
+            } catch (error) {
+                statusDiv.className = 'status error';
+                statusDiv.textContent = `Error sending note creation event: ${error.message}`;
+            }
+        }
+        
+        function testSearch() {
+            const statusDiv = document.getElementById('notesStatus');
+            
+            try {
+                gtag('event', 'search_performed', {
+                    event_category: 'Search',
+                    event_label: 'test search',
+                    value: 1
+                });
+                
+                statusDiv.className = 'status success';
+                statusDiv.textContent = 'Search test event sent successfully!';
+                
+            } catch (error) {
+                statusDiv.className = 'status error';
+                statusDiv.textContent = `Error sending search event: ${error.message}`;
+            }
+        }
+        
+        function testFileUpload() {
+            const statusDiv = document.getElementById('notesStatus');
+            
+            try {
+                gtag('event', 'file_upload_initiated', {
+                    event_category: 'File Upload',
+                    event_label: 'Button Click',
+                    value: 1
+                });
+                
+                statusDiv.className = 'status success';
+                statusDiv.textContent = 'File upload test event sent successfully!';
+                
+            } catch (error) {
+                statusDiv.className = 'status error';
+                statusDiv.textContent = `Error sending file upload event: ${error.message}`;
+            }
+        }
+        
+        // Auto-check configuration on page load
+        window.addEventListener('load', function() {
+            setTimeout(checkConfig, 1000);
+        });
+    </script>
+</body>
+</html>

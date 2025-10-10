@@ -5,6 +5,46 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Notes App</title>
     <link rel="stylesheet" href="styles.css">
+    
+    <!-- Google Analytics - Loaded dynamically from server config -->
+    <script>
+        // Initialize Google Analytics dynamically
+        async function initGoogleAnalytics() {
+            try {
+                const response = await fetch('/api/ga-config');
+                const config = await response.json();
+                
+                if (config.enabled && config.measurementId) {
+                    // Load gtag script
+                    const script = document.createElement('script');
+                    script.async = true;
+                    script.src = `https://www.googletagmanager.com/gtag/js?id=${config.measurementId}`;
+                    document.head.appendChild(script);
+                    
+                    // Initialize gtag
+                    window.dataLayer = window.dataLayer || [];
+                    function gtag(){dataLayer.push(arguments);}
+                    window.gtag = gtag;
+                    gtag('js', new Date());
+                    gtag('config', config.measurementId);
+                    
+                    console.log('Google Analytics initialized with ID:', config.measurementId);
+                } else {
+                    console.log('Google Analytics disabled or not configured');
+                }
+            } catch (error) {
+                console.error('Error loading Google Analytics configuration:', error);
+            }
+        }
+        
+        // Initialize GA when DOM is ready
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', initGoogleAnalytics);
+        } else {
+            initGoogleAnalytics();
+        }
+    </script>
+    
     <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
     <script type="module" src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
     <script type="module" src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js"></script>
