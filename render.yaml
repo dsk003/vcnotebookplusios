@@ -4,8 +4,9 @@ services:
     env: node
     region: oregon
     plan: free
+    rootDir: .
     buildCommand: npm install
-    startCommand: npm start
+    startCommand: node server.js
     envVars:
       - key: NODE_VERSION
         value: 18.18.0
