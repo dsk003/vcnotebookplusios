@@ -7,6 +7,22 @@ const path = require('path');
 const app = express();
 const port = process.env.PORT || 3000;
 
+// Error handling for uncaught exceptions
+process.on('uncaughtException', (error) => {
+  console.error('❌ Uncaught Exception:', error);
+  console.error('Stack:', error.stack);
+  process.exit(1);
+});
+
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('❌ Unhandled Rejection at:', promise);
+  console.error('Reason:', reason);
+});
+
+console.log('🚀 Starting server...');
+console.log(`📦 Node version: ${process.version}`);
+console.log(`🔧 Working directory: ${__dirname}`);
+
 // Middleware to parse JSON bodies
 app.use(express.json());
 
@@ -449,8 +465,23 @@ app.get('/', (_req, res) => {
   res.sendFile(path.join(__dirname, 'index.html'));
 });
 
-app.listen(port, () => {
-  console.log(`Server listening on port ${port}`);
+app.listen(port, '0.0.0.0', () => {
+  console.log(`✅ Server successfully started on port ${port}`);
+  console.log(`🌍 Environment: ${process.env.NODE_ENV || 'development'}`);
+  console.log(`📝 Health check available at: http://localhost:${port}/healthz`);
+  
+  // Log environment variable status (without exposing values)
+  console.log('\n=== Environment Variables Status ===');
+  console.log(`Firebase API Key: ${process.env.FIREBASE_API_KEY ? '✅ Set' : '❌ Missing'}`);
+  console.log(`Firebase Auth Domain: ${process.env.FIREBASE_AUTH_DOMAIN ? '✅ Set' : '❌ Missing'}`);
+  console.log(`Firebase Project ID: ${process.env.FIREBASE_PROJECT_ID ? '✅ Set' : '❌ Missing'}`);
+  console.log(`Supabase URL: ${process.env.SUPABASE_URL ? '✅ Set' : '❌ Missing'}`);
+  console.log(`Supabase Anon Key: ${process.env.SUPABASE_ANON_KEY ? '✅ Set' : '❌ Missing'}`);
+  console.log(`Supabase Service Key: ${process.env.SUPABASE_SERVICE_ROLE_KEY ? '✅ Set' : '❌ Missing'}`);
+  console.log(`GA Measurement ID: ${process.env.GA_MEASUREMENT_ID ? '✅ Set' : '⚠️ Optional - Not Set'}`);
+  console.log(`Dodo Payments API Key: ${process.env.DODO_PAYMENTS_API_KEY ? '✅ Set' : '⚠️ Optional - Not Set'}`);
+  console.log(`Product ID: ${process.env.PRODUCT_ID ? '✅ Set' : '⚠️ Optional - Not Set'}`);
+  console.log('===================================\n');
 });
 
 
