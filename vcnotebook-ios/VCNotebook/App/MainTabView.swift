@@ -1,6 +1,7 @@
 import SwiftUI
 
 struct MainTabView: View {
+    @EnvironmentObject var authManager: AuthenticationManager
     @State private var selectedTab = 0
     
     var body: some View {

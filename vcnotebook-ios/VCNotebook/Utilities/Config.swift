@@ -4,11 +4,17 @@ struct Config {
     // MARK: - Backend API
     
     /// Backend API base URL
-    /// Change this to your Render deployment URL
+    /// ⚠️ IMPORTANT: Change this to your actual Render deployment URL
+    /// Example: "https://vcnotebook.onrender.com"
     static let apiBaseURL = "https://your-app.onrender.com"
     
     // For local development, use:
     // static let apiBaseURL = "http://localhost:3000"
+    
+    // To find your Render URL:
+    // 1. Go to https://dashboard.render.com
+    // 2. Click on your service
+    // 3. Copy the URL at the top (e.g., https://your-service.onrender.com)
     
     // MARK: - Supabase Configuration
     
